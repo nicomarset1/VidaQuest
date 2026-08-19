@@ -407,11 +407,11 @@ export default function App() {
    */
 
   const completedToday = store.completions
-    .filter(c => c.date === iso())
-    .map(c => c.taskId)
+  .filter(c => String(c.date).slice(0, 10) === iso())
+  .map(c => String(c.taskId))
 
-  const isDone = (id: string) =>
-    completedToday.includes(id)
+const isDone = (id: string) =>
+  completedToday.includes(String(id))
 
   const weekStart = ago(6)
 
