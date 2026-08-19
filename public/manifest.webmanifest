@@ -1,0 +1,11 @@
+{
+  "id": "/",
+  "name": "VidaQuest",
+  "short_name": "VidaQuest",
+  "description": "Tu vida como una aventura.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#172017",
+  "theme_color": "#253222",
+  "icons": [{ "src": "/favicon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }]
+}
