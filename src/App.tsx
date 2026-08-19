@@ -20,7 +20,32 @@ export default function App(){
  const streak=useMemo(()=>{let n=0;for(let i=0;i<365;i++){if(store.completions.some(c=>c.date===ago(i)))n++;else if(i)break}return n},[store.completions])
  const toastMsg=(text:string)=>{setToast(text);setTimeout(()=>setToast(''),1600)}
  const toggle=(id:string)=>{const exists=isDone(id);const taskItem=store.tasks.find(t=>t.id===id)!;setStore(s=>({...s,completions:exists?s.completions.filter(c=>!(c.taskId===id&&c.date===iso())):[...s.completions,{taskId:id,date:iso()}]}));if(!exists){const bonus=countWeek(id)+1===taskItem.weeklyTarget;toastMsg(bonus?`¡Meta semanal! +${taskItem.xp+100} XP`:`+${taskItem.xp} XP`);navigator.vibrate?.(25)}}
- const addTask=()=>{if(!task.title.trim())return;setStore(s=>({...s,tasks:[...s.tasks,{id:crypto.randomUUID(),title:task.title.trim(),area:task.area,xp:30,time:task.time||'Sin horario',weeklyTarget:Number(task.target)||1,color:['pink','cyan','lime'][s.tasks.length%3]}]}));setTask({title:'',area:'Personal',time:'',target:4});setSheet(null)}
+const addTask = async () => {
+  if (!task.title.trim() || !supabase) return
+
+  const { data, error } = await supabase
+    .from('tasks')
+    .insert({
+      user_id: (await supabase.auth.getUser()).data.user?.id,
+      title: task.title.trim(),
+      area: task.area,
+      xp: 30,
+      time: task.time || 'Sin horario',
+      weekly_target: Number(task.target) || 1,
+      color: ['pink', 'cyan', 'lime'][store.tasks.length % 3]
+    })
+    .select()
+    .single()
+
+  if (error) {
+    console.error(error)
+    return
+  }
+
+  setStore(s => ({ ...s, tasks: [...s.tasks, data] }))
+  setTask({ title: '', area: 'Personal', time: '', target: 4 })
+  setSheet(null)
+}
  const deleteTask=(id:string)=>{setStore(s=>({...s,tasks:s.tasks.filter(t=>t.id!==id),completions:s.completions.filter(c=>c.taskId!==id)}));toastMsg('Tarea eliminada')}
  const addReminder=async()=>{if(!reminder.title.trim())return;if(Notification.permission==='default')await Notification.requestPermission();setStore(s=>({...s,reminders:[...s.reminders,{id:crypto.randomUUID(),title:reminder.title.trim(),date:reminder.date,time:reminder.time,enabled:true}]}));setReminder({title:'',date:iso(),time:'09:00'});setSheet(null)}
  const signIn=async()=>{if(!supabase){setAuth(a=>({...a,message:'Conectá Supabase para usar cuentas reales. La app local sigue lista para usarse.'}));return}const {error}=await supabase.auth.signInWithPassword({email:auth.email,password:auth.password});setAuth(a=>({...a,message:error?.message||'Sesión iniciada correctamente.'}))}
