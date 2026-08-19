@@ -167,116 +167,149 @@ export default function App() {
    */
 
   const loadSupabaseData = async () => {
-    if (!supabase) {
-      console.log('Supabase no está configurado')
-      return
-    }
+  if (!supabase) {
+    console.log('Supabase no está configurado')
+    return
+  }
 
-    const { data: userData, error: userError } =
-      await supabase.auth.getUser()
+  const {
+    data: { user },
+    error: userError,
+  } = await supabase.auth.getUser()
 
-    if (userError || !userData.user) {
-      console.log('No hay usuario autenticado')
-      return
-    }
+  if (userError) {
+    console.error('Error obteniendo usuario:', userError)
+    return
+  }
 
-    const userId = userData.user.id
+  if (!user) {
+    console.log('No hay usuario autenticado')
+    return
+  }
 
-    const [
-      tasksResult,
-      completionsResult,
-      remindersResult,
-      notesResult,
-    ] = await Promise.all([
-      supabase
-        .from('tasks')
-        .select('*')
-        .eq('user_id', userId),
+  const userId = user.id
 
-      supabase
-        .from('completions')
-        .select('*')
-        .eq('user_id', userId),
+  console.log('Cargando datos de Supabase para:', userId)
 
-      supabase
-        .from('reminders')
-        .select('*')
-        .eq('user_id', userId),
+  const [
+    tasksResult,
+    completionsResult,
+    remindersResult,
+    notesResult,
+  ] = await Promise.all([
+    supabase
+      .from('tasks')
+      .select('*')
+      .eq('user_id', userId),
 
-      supabase
-        .from('notes')
-        .select('*')
-        .eq('user_id', userId),
-    ])
+    supabase
+      .from('completions')
+      .select('*')
+      .eq('user_id', userId),
 
-    if (tasksResult.error) {
-      console.error('Error cargando tareas:', tasksResult.error)
-    }
+    supabase
+      .from('reminders')
+      .select('*')
+      .eq('user_id', userId),
 
-    if (completionsResult.error) {
-      console.error(
-        'Error cargando completaciones:',
-        completionsResult.error
-      )
-    }
+    supabase
+      .from('notes')
+      .select('*')
+      .eq('user_id', userId),
+  ])
 
-    if (remindersResult.error) {
-      console.error(
-        'Error cargando recordatorios:',
-        remindersResult.error
-      )
-    }
+  if (tasksResult.error) {
+    console.error('Error cargando tareas:', tasksResult.error)
+  }
 
-    if (notesResult.error) {
-      console.error('Error cargando notas:', notesResult.error)
-    }
-
-    const dbTasks: Task[] = (tasksResult.data || []).map(
-      (t: any) => ({
-        id: t.id,
-        title: t.title,
-        area: t.area,
-        xp: t.xp,
-        time: t.time,
-        color: t.color,
-        weeklyTarget: t.weekly_target,
-      })
+  if (completionsResult.error) {
+    console.error(
+      'Error cargando completaciones:',
+      completionsResult.error
     )
+  }
 
-    const dbCompletions: Completion[] = (
-      completionsResult.data || []
-    ).map((c: any) => ({
+  if (remindersResult.error) {
+    console.error(
+      'Error cargando recordatorios:',
+      remindersResult.error
+    )
+  }
+
+  if (notesResult.error) {
+    console.error('Error cargando notas:', notesResult.error)
+  }
+
+  console.log(
+    'Completions recibidas de Supabase:',
+    completionsResult.data
+  )
+
+  const dbTasks: Task[] = (tasksResult.data || []).map(
+    (t: any) => ({
+      id: t.id,
+      title: t.title,
+      area: t.area,
+      xp: t.xp,
+      time: t.time,
+      color: t.color,
+      weeklyTarget: t.weekly_target,
+    })
+  )
+
+  const dbCompletions: Completion[] = (
+    completionsResult.data || []
+  ).map(
+    (c: any) => ({
       taskId: c.task_id,
-      date: c.date,
-    }))
+      date: String(c.date).slice(0, 10),
+    })
+  )
 
-    const dbReminders: Reminder[] = (
-      remindersResult.data || []
-    ).map((r: any) => ({
+  const dbReminders: Reminder[] = (
+    remindersResult.data || []
+  ).map(
+    (r: any) => ({
       id: r.id,
       title: r.title,
       time: r.time,
       date: r.date,
       enabled: r.enabled,
-    }))
-
-    const dbNotes: Note[] = (notesResult.data || []).map(
-      (n: any) => ({
-        id: n.id,
-        text: n.content,
-        createdAt: n.created_at,
-      })
-    )
-
-    setStore({
-      tasks: dbTasks.length ? dbTasks : load().tasks,
-      completions: dbCompletions,
-      reminders: dbReminders,
-      notes: dbNotes,
     })
+  )
 
-    console.log('Datos sincronizados desde Supabase')
-  }
+  const dbNotes: Note[] = (
+    notesResult.data || []
+  ).map(
+    (n: any) => ({
+      id: n.id,
+      text: n.content,
+      createdAt: n.created_at,
+    })
+  )
+
+  setStore(current => ({
+    tasks: tasksResult.error
+      ? current.tasks
+      : dbTasks.length
+        ? dbTasks
+        : current.tasks,
+
+    completions: completionsResult.error
+      ? current.completions
+      : dbCompletions,
+
+    reminders: remindersResult.error
+      ? current.reminders
+      : dbReminders,
+
+    notes: notesResult.error
+      ? current.notes
+      : dbNotes,
+  }))
+
+  console.log('Datos sincronizados desde Supabase')
+}
 
   /*
    * ============================================================
