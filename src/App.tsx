@@ -1449,6 +1449,9 @@ const isDone = (id: string) =>
           endpoint: json.endpoint!,
           p256dh: json.keys!.p256dh,
           auth: json.keys!.auth,
+          timezone:
+            Intl.DateTimeFormat().resolvedOptions()
+              .timeZone,
           last_seen_at: new Date().toISOString(),
         },
         { onConflict: 'endpoint' }
@@ -1503,6 +1506,9 @@ const isDone = (id: string) =>
           .from('push_subscriptions')
           .update({
             last_seen_at: new Date().toISOString(),
+            timezone:
+              Intl.DateTimeFormat().resolvedOptions()
+                .timeZone,
           })
           .eq('endpoint', sub.endpoint)
       }
