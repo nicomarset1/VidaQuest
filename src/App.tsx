@@ -3,8 +3,10 @@ import {
   Bell,
   BellRing,
   Calendar,
+  CalendarDays,
   Check,
   ChevronLeft,
+  ChevronRight,
   CircleAlert,
   CirclePlus,
   CircleUserRound,
@@ -87,6 +89,50 @@ const fmtReminderDate = (date: string) => {
     month: 'short',
   }).format(new Date(`${date}T12:00`))
 }
+
+const capitalize = (s: string) =>
+  s.charAt(0).toUpperCase() + s.slice(1)
+
+const fmtDayLabel = (date: string) => {
+  if (date === iso()) return 'Hoy'
+  if (date === ago(-1)) return 'Mañana'
+  if (date === ago(1)) return 'Ayer'
+
+  return capitalize(
+    new Intl.DateTimeFormat('es-AR', {
+      weekday: 'long',
+      day: 'numeric',
+      month: 'long',
+    }).format(new Date(`${date}T12:00`))
+  )
+}
+
+const monthLabel = (year: number, month: number) =>
+  capitalize(
+    new Intl.DateTimeFormat('es-AR', {
+      month: 'long',
+      year: 'numeric',
+    }).format(new Date(year, month, 1))
+  )
+
+const buildMonthGrid = (year: number, month: number) => {
+  const first = new Date(year, month, 1)
+  const startOffset = (first.getDay() + 6) % 7
+  const gridStart = new Date(year, month, 1 - startOffset)
+
+  return Array.from({ length: 42 }, (_, i) => {
+    const d = new Date(gridStart)
+    d.setDate(d.getDate() + i)
+
+    return {
+      date: d.toISOString().slice(0, 10),
+      day: d.getDate(),
+      inMonth: d.getMonth() === month,
+    }
+  })
+}
+
+const WEEKDAY_LABELS = ['L', 'M', 'X', 'J', 'V', 'S', 'D']
 
 const THEMES = [
   { id: 'bosque', name: 'Bosque', dark: false, accent: '#d9fc72' },
@@ -254,8 +300,15 @@ export default function App() {
   const [store, setStore] = useState<Store>(load)
 
   const [view, setView] = useState<
-    'home' | 'tasks' | 'stats' | 'notes'
+    'home' | 'tasks' | 'calendar' | 'stats' | 'notes'
   >('home')
+
+  const [calendarMonth, setCalendarMonth] = useState(() => {
+    const d = new Date()
+    return { year: d.getFullYear(), month: d.getMonth() }
+  })
+
+  const [selectedDay, setSelectedDay] = useState(iso())
 
   const [sheet, setSheet] = useState<
     | 'task'
@@ -775,6 +828,44 @@ const isDone = (id: string) =>
       }),
     [store.completions]
   )
+
+  const remindersByDate = useMemo(() => {
+    const map = new Map<string, Reminder[]>()
+
+    for (const r of store.reminders) {
+      if (!map.has(r.date)) map.set(r.date, [])
+      map.get(r.date)!.push(r)
+    }
+
+    return map
+  }, [store.reminders])
+
+  const completionsByDate = useMemo(() => {
+    const map = new Map<string, number>()
+
+    for (const c of store.completions) {
+      map.set(c.date, (map.get(c.date) || 0) + 1)
+    }
+
+    return map
+  }, [store.completions])
+
+  const monthGrid = useMemo(
+    () =>
+      buildMonthGrid(
+        calendarMonth.year,
+        calendarMonth.month
+      ),
+    [calendarMonth]
+  )
+
+  const selectedDayReminders =
+    remindersByDate.get(selectedDay) || []
+
+  const selectedDayTasks = store.completions
+    .filter(c => c.date === selectedDay)
+    .map(c => store.tasks.find(t => t.id === c.taskId))
+    .filter((t): t is Task => Boolean(t))
 
   const toastMsg = (
     text: string,
@@ -1374,6 +1465,7 @@ const isDone = (id: string) =>
   const nav = [
     ['home', Home, 'Inicio'],
     ['tasks', ClipboardList, 'Tareas'],
+    ['calendar', CalendarDays, 'Calendario'],
     ['stats', Trophy, 'Progreso'],
     ['notes', NotebookPen, 'Notas'],
   ] as const
@@ -1567,6 +1659,175 @@ const isDone = (id: string) =>
               onDelete={requestDeleteTask}
               weekly={countWeek}
             />
+          </Page>
+        )}
+
+        {view === 'calendar' && (
+          <Page
+            title="Calendario"
+            back={() => setView('home')}
+          >
+            <div className="cal-nav">
+              <button
+                onClick={() =>
+                  setCalendarMonth(m => {
+                    const d = new Date(
+                      m.year,
+                      m.month - 1,
+                      1
+                    )
+                    return {
+                      year: d.getFullYear(),
+                      month: d.getMonth(),
+                    }
+                  })
+                }
+              >
+                <ChevronLeft size={18} />
+              </button>
+
+              <h2>
+                {monthLabel(
+                  calendarMonth.year,
+                  calendarMonth.month
+                )}
+              </h2>
+
+              <button
+                onClick={() =>
+                  setCalendarMonth(m => {
+                    const d = new Date(
+                      m.year,
+                      m.month + 1,
+                      1
+                    )
+                    return {
+                      year: d.getFullYear(),
+                      month: d.getMonth(),
+                    }
+                  })
+                }
+              >
+                <ChevronRight size={18} />
+              </button>
+            </div>
+
+            <div className="cal-weekdays">
+              {WEEKDAY_LABELS.map(l => (
+                <span
+                  className="cal-weekday"
+                  key={l}
+                >
+                  {l}
+                </span>
+              ))}
+            </div>
+
+            <div className="cal-grid">
+              {monthGrid.map(cell => {
+                const hasReminder =
+                  remindersByDate.has(cell.date)
+
+                const doneCount =
+                  completionsByDate.get(
+                    cell.date
+                  ) || 0
+
+                const isToday =
+                  cell.date === iso()
+
+                const isSelected =
+                  cell.date === selectedDay
+
+                return (
+                  <button
+                    key={cell.date}
+                    className={`cal-day ${
+                      cell.inMonth
+                        ? ''
+                        : 'outside'
+                    } ${
+                      isToday ? 'today' : ''
+                    } ${
+                      isSelected
+                        ? 'selected'
+                        : ''
+                    }`}
+                    onClick={() =>
+                      setSelectedDay(cell.date)
+                    }
+                  >
+                    <span>{cell.day}</span>
+
+                    <i className="dots">
+                      {doneCount > 0 && (
+                        <b className="dot" />
+                      )}
+                      {hasReminder && (
+                        <b className="dot reminder" />
+                      )}
+                    </i>
+                  </button>
+                )
+              })}
+            </div>
+
+            <section className="cal-day-detail">
+              <div className="cal-day-detail-head">
+                <p>
+                  {fmtDayLabel(selectedDay)}
+                </p>
+
+                <button
+                  onClick={() => {
+                    setReminder({
+                      title: '',
+                      time: '09:00',
+                      date: selectedDay,
+                    })
+                    setSheet('reminder')
+                  }}
+                >
+                  <Plus size={14} />
+                  Agendar
+                </button>
+              </div>
+
+              {selectedDayReminders.length > 0 && (
+                <div className="cal-list">
+                  {selectedDayReminders.map(r => (
+                    <div
+                      className="cal-item"
+                      key={r.id}
+                    >
+                      <Bell size={14} />
+                      <span>{r.title}</span>
+                      <b>{r.time}</b>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {selectedDayTasks.length > 0 && (
+                <div className="cal-list">
+                  {selectedDayTasks.map((t, i) => (
+                    <div
+                      className="cal-item done"
+                      key={`${t.id}-${i}`}
+                    >
+                      <Check size={14} />
+                      <span>{t.title}</span>
+                      <em>+{t.xp} XP</em>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {!selectedDayReminders.length &&
+                !selectedDayTasks.length && (
+                  <Empty text="Nada agendado ni completado este día." />
+                )}
+            </section>
           </Page>
         )}
 
