@@ -1,4 +1,9 @@
-import { useEffect, useMemo, useState } from 'react'
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react'
 import {
   Bell,
   BellRing,
@@ -140,6 +145,25 @@ const buildMonthGrid = (year: number, month: number) => {
 }
 
 const WEEKDAY_LABELS = ['L', 'M', 'X', 'J', 'V', 'S', 'D']
+
+// XP que hace falta para pasar del nivel n al n+1: arranca bajo (sube
+// rápido al principio) y crece cada vez más por nivel.
+const xpForLevel = (n: number) =>
+  Math.round(80 + 40 * Math.pow(n, 1.35))
+
+const levelInfo = (totalXP: number) => {
+  let level = 1
+  let remaining = totalXP
+  let needed = xpForLevel(level)
+
+  while (remaining >= needed) {
+    remaining -= needed
+    level++
+    needed = xpForLevel(level)
+  }
+
+  return { level, xpIntoLevel: remaining, xpForNext: needed }
+}
 
 const THEMES = [
   { id: 'bosque', name: 'Bosque', dark: false, accent: '#d9fc72' },
@@ -735,8 +759,35 @@ const isDone = (id: string) =>
       )
     : 0
 
-  const level =
-    Math.floor(totalXP / 500) + 1
+  const { level, xpIntoLevel, xpForNext } =
+    levelInfo(totalXP)
+
+  const prevLevelRef = useRef<number | null>(null)
+  const [levelUp, setLevelUp] = useState<number | null>(
+    null
+  )
+
+  useEffect(() => {
+    if (
+      prevLevelRef.current !== null &&
+      level > prevLevelRef.current
+    ) {
+      setLevelUp(level)
+      navigator.vibrate?.([30, 50, 30, 50, 90])
+    }
+
+    prevLevelRef.current = level
+  }, [level])
+
+  useEffect(() => {
+    if (levelUp === null) return
+
+    const t = setTimeout(() => {
+      setLevelUp(null)
+    }, 3000)
+
+    return () => clearTimeout(t)
+  }, [levelUp])
 
   const streak = useMemo(() => {
     let n = 0
@@ -1768,7 +1819,9 @@ const isDone = (id: string) =>
                   <span
                     style={{
                       width: `${
-                        (totalXP % 500) / 5
+                        (xpIntoLevel /
+                          xpForNext) *
+                        100
                       }%`,
                     }}
                   />
@@ -1776,8 +1829,7 @@ const isDone = (id: string) =>
 
                 <p>
                   {totalXP} XP total ·{' '}
-                  {500 -
-                    (totalXP % 500)}{' '}
+                  {xpForNext - xpIntoLevel}{' '}
                   XP para avanzar
                 </p>
               </div>
@@ -3327,6 +3379,65 @@ const isDone = (id: string) =>
               </button>
             </div>
           </section>
+        </div>
+      )}
+
+      {levelUp !== null && (
+        <div
+          className="levelup-overlay"
+          onClick={() => setLevelUp(null)}
+        >
+          <div className="levelup-burst" />
+
+          <div className="levelup-particles">
+            {Array.from({ length: 12 }, (_, i) => {
+              const angle =
+                (i / 12) * Math.PI * 2
+              const radius = 110 + (i % 3) * 26
+
+              return (
+                <span
+                  key={i}
+                  className="levelup-particle"
+                  style={
+                    {
+                      '--tx': `${
+                        Math.cos(angle) * radius
+                      }px`,
+                      '--ty': `${
+                        Math.sin(angle) * radius
+                      }px`,
+                      animationDelay: `${
+                        i * 0.03
+                      }s`,
+                    } as React.CSSProperties
+                  }
+                >
+                  <Sparkles
+                    size={14 + (i % 3) * 6}
+                  />
+                </span>
+              )
+            })}
+          </div>
+
+          <div className="levelup-content">
+            <span className="levelup-label">
+              ¡Subiste de nivel!
+            </span>
+
+            <div className="levelup-badge">
+              <Trophy size={40} />
+            </div>
+
+            <h1 className="levelup-number">
+              Nivel {levelUp}
+            </h1>
+
+            <p className="levelup-hint">
+              Tocá para continuar
+            </p>
+          </div>
         </div>
       )}
     </div>
