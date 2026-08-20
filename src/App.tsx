@@ -1,15 +1,23 @@
 import { useEffect, useMemo, useState } from 'react'
 import {
   Bell,
+  Calendar,
   Check,
   ChevronLeft,
+  CircleAlert,
   CirclePlus,
+  CircleUserRound,
   ClipboardList,
+  Eye,
+  EyeOff,
   Flame,
   Gamepad2,
   Home,
+  Lock,
+  LoaderCircle,
   LogIn,
-  Menu,
+  LogOut,
+  Mail,
   Moon,
   NotebookPen,
   Plus,
@@ -17,6 +25,7 @@ import {
   Sun,
   Target,
   Trash2,
+  TriangleAlert,
   Trophy,
   X,
 } from 'lucide-react'
@@ -65,6 +74,16 @@ const ago = (n: number) => {
   const d = new Date()
   d.setDate(d.getDate() - n)
   return d.toISOString().slice(0, 10)
+}
+
+const fmtReminderDate = (date: string) => {
+  if (date === iso()) return 'Hoy'
+  if (date === ago(-1)) return 'Mañana'
+
+  return new Intl.DateTimeFormat('es-AR', {
+    day: 'numeric',
+    month: 'short',
+  }).format(new Date(`${date}T12:00`))
 }
 
 const starter: Store = {
@@ -133,11 +152,29 @@ export default function App() {
     'task' | 'reminder' | 'reminders' | 'menu' | 'auth' | null
   >(null)
 
-  const [toast, setToast] = useState('')
+  const [toast, setToast] = useState<{
+    text: string
+    type: 'success' | 'error' | 'info'
+  } | null>(null)
 
   const [dark, setDark] = useState(
     () => localStorage.getItem('vidaquest-theme') === 'dark'
   )
+
+  const [authUser, setAuthUser] = useState<{
+    id: string
+    email: string
+  } | null>(null)
+
+  const [authLoading, setAuthLoading] = useState(false)
+
+  const [showPassword, setShowPassword] = useState(false)
+
+  const [confirmState, setConfirmState] = useState<{
+    title: string
+    message: string
+    action: () => void
+  } | null>(null)
 
   const [task, setTask] = useState({
     title: '',
@@ -173,14 +210,14 @@ export default function App() {
   }
 
   const {
-    data: { user },
-    error: userError,
-  } = await supabase.auth.getUser()
+    data: { session },
+  } = await supabase.auth.getSession()
 
-  if (userError) {
-    console.error('Error obteniendo usuario:', userError)
-    return
-  }
+  const user = session?.user ?? null
+
+  setAuthUser(
+    user ? { id: user.id, email: user.email ?? '' } : null
+  )
 
   if (!user) {
     console.log('No hay usuario autenticado')
@@ -354,6 +391,8 @@ export default function App() {
       async (_event, session) => {
         if (session) {
           await loadSupabaseData()
+        } else {
+          setAuthUser(null)
         }
       }
     )
@@ -460,12 +499,15 @@ const isDone = (id: string) =>
     return n
   }, [store.completions])
 
-  const toastMsg = (text: string) => {
-    setToast(text)
+  const toastMsg = (
+    text: string,
+    type: 'success' | 'error' | 'info' = 'success'
+  ) => {
+    setToast({ text, type })
 
     setTimeout(() => {
-      setToast('')
-    }, 1600)
+      setToast(null)
+    }, 2200)
   }
 
   /*
@@ -476,7 +518,7 @@ const isDone = (id: string) =>
 
   const toggle = async (id: string) => {
     if (!supabase) {
-      toastMsg('Conectá Supabase primero')
+      toastMsg('Conectá Supabase primero', 'error')
       return
     }
 
@@ -487,7 +529,7 @@ const isDone = (id: string) =>
     const user = userData.user
 
     if (!user) {
-      toastMsg('Iniciá sesión primero')
+      toastMsg('Iniciá sesión primero', 'error')
       return
     }
 
@@ -516,7 +558,7 @@ const isDone = (id: string) =>
           error
         )
 
-        toastMsg('No se pudo guardar el cambio')
+        toastMsg('No se pudo guardar el cambio', 'error')
         return
       }
 
@@ -593,7 +635,7 @@ const isDone = (id: string) =>
     if (!task.title.trim()) return
 
     if (!supabase) {
-      toastMsg('Conectá Supabase primero')
+      toastMsg('Conectá Supabase primero', 'error')
       return
     }
 
@@ -604,7 +646,7 @@ const isDone = (id: string) =>
     const user = userData.user
 
     if (!user) {
-      toastMsg('Iniciá sesión primero')
+      toastMsg('Iniciá sesión primero', 'error')
       return
     }
 
@@ -632,7 +674,7 @@ const isDone = (id: string) =>
         error
       )
 
-      toastMsg('No se pudo crear la tarea')
+      toastMsg('No se pudo crear la tarea', 'error')
       return
     }
 
@@ -659,6 +701,8 @@ const isDone = (id: string) =>
     })
 
     setSheet(null)
+
+    toastMsg('Tarea creada')
   }
 
   /*
@@ -689,6 +733,7 @@ const isDone = (id: string) =>
         'Error eliminando tarea:',
         error
       )
+      toastMsg('No se pudo eliminar la tarea', 'error')
       return
     }
 
@@ -703,7 +748,18 @@ const isDone = (id: string) =>
         ),
     }))
 
-    toastMsg('Tarea eliminada')
+    toastMsg('Tarea eliminada', 'info')
+  }
+
+  const requestDeleteTask = (t: Task) => {
+    setConfirmState({
+      title: 'Eliminar tarea',
+      message: `Vas a eliminar "${t.title}" y todo su historial de esta semana. Esta acción no se puede deshacer.`,
+      action: async () => {
+        setConfirmState(null)
+        await deleteTask(t.id)
+      },
+    })
   }
 
   /*
@@ -716,7 +772,19 @@ const isDone = (id: string) =>
     if (!reminder.title.trim()) return
 
     if (!supabase) {
-      toastMsg('Conectá Supabase primero')
+      toastMsg('Conectá Supabase primero', 'error')
+      return
+    }
+
+    const target = new Date(
+      `${reminder.date}T${reminder.time}`
+    )
+
+    if (
+      Number.isNaN(target.getTime()) ||
+      target.getTime() <= Date.now()
+    ) {
+      toastMsg('Elegí una fecha y hora futura', 'error')
       return
     }
 
@@ -727,7 +795,7 @@ const isDone = (id: string) =>
     const user = userData.user
 
     if (!user) {
-      toastMsg('Iniciá sesión primero')
+      toastMsg('Iniciá sesión primero', 'error')
       return
     }
 
@@ -758,6 +826,7 @@ const isDone = (id: string) =>
         'Error creando recordatorio:',
         error
       )
+      toastMsg('No se pudo crear el recordatorio', 'error')
       return
     }
 
@@ -784,6 +853,12 @@ const isDone = (id: string) =>
     })
 
     setSheet(null)
+
+    toastMsg(
+      `Recordatorio guardado para ${fmtReminderDate(
+        newReminder.date
+      )} · ${newReminder.time}`
+    )
   }
 
   /*
@@ -803,33 +878,79 @@ const isDone = (id: string) =>
       return
     }
 
-    const {
-      error,
-    } = await supabase.auth.signInWithPassword({
-      email: auth.email,
-      password: auth.password,
-    })
-
-    if (error) {
+    if (!auth.email.trim() || !auth.password) {
       setAuth(a => ({
         ...a,
-        message: error.message,
+        message: 'Completá tu correo y contraseña.',
       }))
 
       return
     }
 
-    setAuth(a => ({
-      ...a,
-      message:
-        'Sesión iniciada correctamente.',
-    }))
+    setAuthLoading(true)
+
+    setAuth(a => ({ ...a, message: '' }))
+
+    const {
+      data,
+      error,
+    } = await supabase.auth.signInWithPassword({
+      email: auth.email.trim(),
+      password: auth.password,
+    })
+
+    setAuthLoading(false)
+
+    if (error) {
+      setAuth(a => ({
+        ...a,
+        message:
+          error.message === 'Invalid login credentials'
+            ? 'Correo o contraseña incorrectos.'
+            : error.message,
+      }))
+
+      toastMsg('No se pudo iniciar sesión', 'error')
+
+      return
+    }
+
+    setAuthUser(
+      data.user
+        ? { id: data.user.id, email: data.user.email ?? '' }
+        : null
+    )
+
+    setAuth({ email: '', password: '', message: '' })
 
     await loadSupabaseData()
 
-    setTimeout(() => {
-      setSheet(null)
-    }, 500)
+    setSheet(null)
+
+    toastMsg(
+      `¡Bienvenido${
+        data.user?.email
+          ? ', ' + data.user.email.split('@')[0]
+          : ''
+      }!`
+    )
+  }
+
+  const signOut = async () => {
+    if (!supabase) return
+
+    const { error } = await supabase.auth.signOut()
+
+    if (error) {
+      toastMsg('No se pudo cerrar sesión', 'error')
+      return
+    }
+
+    setAuthUser(null)
+    setStore(starter)
+    localStorage.removeItem('vidaquest-v3')
+    setSheet(null)
+    toastMsg('Sesión cerrada', 'info')
   }
 
   /*
@@ -871,13 +992,13 @@ const isDone = (id: string) =>
           </button>
 
           <button
-            className="bell"
+            className={`bell ${authUser ? 'linked' : ''}`}
             onClick={() =>
               setSheet('menu')
             }
-            aria-label="Menú"
+            aria-label="Cuenta"
           >
-            <Menu size={20} />
+            <CircleUserRound size={20} />
           </button>
         </div>
       </header>
@@ -1035,7 +1156,7 @@ const isDone = (id: string) =>
               tasks={store.tasks}
               done={isDone}
               onToggle={toggle}
-              deleteTask={deleteTask}
+              onDelete={requestDeleteTask}
               weekly={countWeek}
             />
           </Page>
@@ -1223,7 +1344,8 @@ const isDone = (id: string) =>
 
                   if (!supabase) {
                     toastMsg(
-                      'Conectá Supabase primero'
+                      'Conectá Supabase primero',
+                      'error'
                     )
                     return
                   }
@@ -1238,7 +1360,8 @@ const isDone = (id: string) =>
 
                   if (!user) {
                     toastMsg(
-                      'Iniciá sesión primero'
+                      'Iniciá sesión primero',
+                      'error'
                     )
                     return
                   }
@@ -1261,6 +1384,10 @@ const isDone = (id: string) =>
                   if (error) {
                     console.error(
                       error
+                    )
+                    toastMsg(
+                      'No se pudo guardar la nota',
+                      'error'
                     )
                     return
                   }
@@ -1352,9 +1479,15 @@ const isDone = (id: string) =>
       </nav>
 
       {toast && (
-        <div className="celebrate">
-          <Sparkles size={17} />
-          {toast}
+        <div className={`celebrate ${toast.type}`}>
+          {toast.type === 'error' ? (
+            <CircleAlert size={17} />
+          ) : toast.type === 'info' ? (
+            <Bell size={17} />
+          ) : (
+            <Sparkles size={17} />
+          )}
+          {toast.text}
         </div>
       )}
 
@@ -1522,19 +1655,38 @@ const isDone = (id: string) =>
                   }
                 />
 
-                <input
-                  type="time"
-                  value={
-                    reminder.time
-                  }
-                  onChange={e =>
-                    setReminder({
-                      ...reminder,
-                      time:
-                        e.target.value,
-                    })
-                  }
-                />
+                <div className="form-row">
+                  <input
+                    className="half"
+                    type="date"
+                    min={iso()}
+                    value={
+                      reminder.date
+                    }
+                    onChange={e =>
+                      setReminder({
+                        ...reminder,
+                        date:
+                          e.target.value,
+                      })
+                    }
+                  />
+
+                  <input
+                    className="half"
+                    type="time"
+                    value={
+                      reminder.time
+                    }
+                    onChange={e =>
+                      setReminder({
+                        ...reminder,
+                        time:
+                          e.target.value,
+                      })
+                    }
+                  />
+                </div>
 
                 <button
                   className="primary"
@@ -1542,6 +1694,7 @@ const isDone = (id: string) =>
                     addReminder
                   }
                 >
+                  <Calendar size={16} />
                   Guardar recordatorio
                 </button>
               </>
@@ -1616,40 +1769,54 @@ const isDone = (id: string) =>
             {sheet === 'menu' && (
               <>
                 <span className="sheet-icon">
-                  <Gamepad2 />
+                  <CircleUserRound />
                 </span>
 
                 <h2>
-                  Tu espacio
+                  Tu cuenta
                 </h2>
 
-                <button
-                  className="menu-row"
-                  onClick={() =>
-                    setDark(!dark)
-                  }
+                <div
+                  className={`account-card ${
+                    authUser ? 'linked' : ''
+                  }`}
                 >
-                  {dark ? (
-                    <Sun />
-                  ) : (
-                    <Moon />
-                  )}
+                  <span className="avatar">
+                    {authUser ? (
+                      authUser.email
+                        .charAt(0)
+                        .toUpperCase()
+                    ) : (
+                      <CircleUserRound size={22} />
+                    )}
+                  </span>
 
-                  <span>
+                  <div>
                     <b>
-                      Modo{' '}
-                      {dark
-                        ? 'claro'
-                        : 'oscuro'}
+                      {authUser
+                        ? authUser.email
+                        : 'Invitado'}
                     </b>
 
                     <small>
-                      Personalizá los
-                      colores de
-                      VidaQuest
+                      {authUser
+                        ? `Nivel ${level} · ${totalXP} XP`
+                        : 'Iniciá sesión para guardar tu progreso'}
                     </small>
-                  </span>
-                </button>
+                  </div>
+                </div>
+
+                {!authUser && (
+                  <button
+                    className="primary"
+                    onClick={() =>
+                      setSheet('auth')
+                    }
+                  >
+                    <LogIn size={16} />
+                    Iniciar sesión
+                  </button>
+                )}
 
                 <button
                   className="menu-row"
@@ -1677,91 +1844,208 @@ const isDone = (id: string) =>
                   </span>
                 </button>
 
-                <button
-                  className="menu-row"
-                  onClick={() =>
-                    setSheet('auth')
-                  }
-                >
-                  <LogIn />
+                {authUser && (
+                  <button
+                    className="menu-row danger-row"
+                    onClick={signOut}
+                  >
+                    <LogOut />
 
-                  <span>
-                    <b>
-                      Iniciar sesión
-                    </b>
+                    <span>
+                      <b>
+                        Cerrar sesión
+                      </b>
 
-                    <small>
-                      Sincronizá tus
-                      datos entre
-                      dispositivos
-                    </small>
-                  </span>
-                </button>
+                      <small>
+                        Tus datos quedan
+                        guardados en la nube
+                      </small>
+                    </span>
+                  </button>
+                )}
               </>
             )}
 
             {sheet === 'auth' && (
-              <>
-                <span className="sheet-icon">
-                  <LogIn />
-                </span>
+              authUser ? (
+                <>
+                  <span className="sheet-icon">
+                    <CircleUserRound />
+                  </span>
 
-                <h2>
-                  Iniciar sesión
-                </h2>
+                  <h2>
+                    Tu cuenta
+                  </h2>
 
-                <p>
-                  Conectá tu cuenta para
-                  guardar tu progreso en la
-                  nube.
-                </p>
-
-                <input
-                  type="email"
-                  placeholder="tu@email.com"
-                  value={
-                    auth.email
-                  }
-                  onChange={e =>
-                    setAuth({
-                      ...auth,
-                      email:
-                        e.target
-                          .value,
-                    })
-                  }
-                />
-
-                <input
-                  type="password"
-                  placeholder="Contraseña"
-                  value={
-                    auth.password
-                  }
-                  onChange={e =>
-                    setAuth({
-                      ...auth,
-                      password:
-                        e.target
-                          .value,
-                    })
-                  }
-                />
-
-                <button
-                  className="primary"
-                  onClick={signIn}
-                >
-                  Entrar a mi cuenta
-                </button>
-
-                {auth.message && (
-                  <p className="auth-msg">
-                    {auth.message}
+                  <p>
+                    Sesión iniciada como{' '}
+                    <b>{authUser.email}</b>.
                   </p>
-                )}
-              </>
+
+                  <button
+                    className="danger"
+                    onClick={signOut}
+                  >
+                    <LogOut size={16} />
+                    Cerrar sesión
+                  </button>
+                </>
+              ) : (
+                <>
+                  <span className="sheet-icon">
+                    <Lock />
+                  </span>
+
+                  <h2>
+                    Bienvenido de nuevo
+                  </h2>
+
+                  <p>
+                    Iniciá sesión para
+                    sincronizar tu progreso
+                    en todos tus dispositivos.
+                  </p>
+
+                  <div className="field">
+                    <Mail size={16} />
+
+                    <input
+                      autoFocus
+                      type="email"
+                      placeholder="tu@email.com"
+                      value={
+                        auth.email
+                      }
+                      onChange={e =>
+                        setAuth({
+                          ...auth,
+                          email:
+                            e.target
+                              .value,
+                        })
+                      }
+                    />
+                  </div>
+
+                  <div className="field">
+                    <Lock size={16} />
+
+                    <input
+                      type={
+                        showPassword
+                          ? 'text'
+                          : 'password'
+                      }
+                      placeholder="Contraseña"
+                      value={
+                        auth.password
+                      }
+                      onChange={e =>
+                        setAuth({
+                          ...auth,
+                          password:
+                            e.target
+                              .value,
+                        })
+                      }
+                      onKeyDown={e =>
+                        e.key ===
+                          'Enter' &&
+                        signIn()
+                      }
+                    />
+
+                    <button
+                      type="button"
+                      className="field-action"
+                      onClick={() =>
+                        setShowPassword(
+                          s => !s
+                        )
+                      }
+                      aria-label={
+                        showPassword
+                          ? 'Ocultar contraseña'
+                          : 'Mostrar contraseña'
+                      }
+                    >
+                      {showPassword ? (
+                        <EyeOff size={16} />
+                      ) : (
+                        <Eye size={16} />
+                      )}
+                    </button>
+                  </div>
+
+                  <button
+                    className="primary"
+                    onClick={signIn}
+                    disabled={authLoading}
+                  >
+                    {authLoading ? (
+                      <LoaderCircle
+                        size={16}
+                        className="spin"
+                      />
+                    ) : (
+                      <LogIn size={16} />
+                    )}
+                    {authLoading
+                      ? 'Ingresando...'
+                      : 'Entrar a mi cuenta'}
+                  </button>
+
+                  {auth.message && (
+                    <p className="alert-error">
+                      <CircleAlert size={14} />
+                      {auth.message}
+                    </p>
+                  )}
+                </>
+              )
             )}
+          </section>
+        </div>
+      )}
+
+      {confirmState && (
+        <div
+          className="sheet-bg"
+          onMouseDown={() =>
+            setConfirmState(null)
+          }
+        >
+          <section
+            className="confirm-card"
+            onMouseDown={e =>
+              e.stopPropagation()
+            }
+          >
+            <span className="sheet-icon danger">
+              <TriangleAlert />
+            </span>
+
+            <h2>{confirmState.title}</h2>
+
+            <p>{confirmState.message}</p>
+
+            <div className="confirm-actions">
+              <button
+                className="ghost"
+                onClick={() =>
+                  setConfirmState(null)
+                }
+              >
+                Cancelar
+              </button>
+
+              <button
+                className="danger"
+                onClick={confirmState.action}
+              >
+                Eliminar
+              </button>
+            </div>
           </section>
         </div>
       )}
@@ -1779,13 +2063,13 @@ function TaskList({
   tasks,
   done,
   onToggle,
-  deleteTask,
+  onDelete,
   weekly,
 }: {
   tasks: Task[]
   done: (id: string) => boolean
   onToggle: (id: string) => void
-  deleteTask?: (id: string) => void
+  onDelete?: (t: Task) => void
   weekly?: (id: string) => number
 }) {
   return (
@@ -1835,12 +2119,12 @@ function TaskList({
               </em>
             </button>
 
-            {deleteTask && (
+            {onDelete && (
               <button
                 className="delete"
                 aria-label={`Eliminar ${t.title}`}
                 onClick={() =>
-                  deleteTask(t.id)
+                  onDelete(t)
                 }
               >
                 <Trash2 size={16} />
@@ -1898,7 +2182,7 @@ function Reminders({
                 </b>
 
                 <small>
-                  {r.time}
+                  {fmtReminderDate(r.date)} · {r.time}
                 </small>
               </span>
 
