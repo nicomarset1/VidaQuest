@@ -167,6 +167,8 @@ button,input,textarea,select{font:inherit}
 .theme-preview[data-theme=uva] i{background:linear-gradient(135deg,#c9a3ff,#2c1f3d)}
 .cal-nav{display:flex;align-items:center;justify-content:space-between;margin:0 2px 14px}
 .cal-nav h2{font-size:15px;margin:0}
+.cal-nav-center{display:flex;flex-direction:column;align-items:center;gap:5px}
+.cal-today-btn{border:0;background:var(--accent-soft);color:var(--accent-text);font-size:9px;font-weight:700;padding:4px 10px;border-radius:20px}
 .cal-nav button{width:34px;height:34px;border:0;background:var(--card);border-radius:10px;color:var(--ink);display:grid;place-items:center}
 .cal-weekdays,.cal-grid{display:grid;grid-template-columns:repeat(7,1fr)}
 .cal-weekday{font:9px 'DM Mono';text-transform:uppercase;color:var(--muted);text-align:center;padding-bottom:8px}

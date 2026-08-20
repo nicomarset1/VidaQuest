@@ -72,12 +72,19 @@ type Store = {
   notes: Note[]
 }
 
-const iso = () => new Date().toISOString().slice(0, 10)
+const localDateString = (d: Date) => {
+  const y = d.getFullYear()
+  const m = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return `${y}-${m}-${day}`
+}
+
+const iso = () => localDateString(new Date())
 
 const ago = (n: number) => {
   const d = new Date()
   d.setDate(d.getDate() - n)
-  return d.toISOString().slice(0, 10)
+  return localDateString(d)
 }
 
 const fmtReminderDate = (date: string) => {
@@ -125,7 +132,7 @@ const buildMonthGrid = (year: number, month: number) => {
     d.setDate(d.getDate() + i)
 
     return {
-      date: d.toISOString().slice(0, 10),
+      date: localDateString(d),
       day: d.getDate(),
       inMonth: d.getMonth() === month,
     }
@@ -1715,6 +1722,7 @@ const isDone = (id: string) =>
           >
             <div className="cal-nav">
               <button
+                aria-label="Mes anterior"
                 onClick={() =>
                   setCalendarMonth(m => {
                     const d = new Date(
@@ -1732,14 +1740,36 @@ const isDone = (id: string) =>
                 <ChevronLeft size={18} />
               </button>
 
-              <h2>
-                {monthLabel(
-                  calendarMonth.year,
-                  calendarMonth.month
+              <div className="cal-nav-center">
+                <h2>
+                  {monthLabel(
+                    calendarMonth.year,
+                    calendarMonth.month
+                  )}
+                </h2>
+
+                {(calendarMonth.year !==
+                  new Date().getFullYear() ||
+                  calendarMonth.month !==
+                    new Date().getMonth()) && (
+                  <button
+                    className="cal-today-btn"
+                    onClick={() => {
+                      const d = new Date()
+                      setCalendarMonth({
+                        year: d.getFullYear(),
+                        month: d.getMonth(),
+                      })
+                      setSelectedDay(iso())
+                    }}
+                  >
+                    Hoy
+                  </button>
                 )}
-              </h2>
+              </div>
 
               <button
+                aria-label="Mes siguiente"
                 onClick={() =>
                   setCalendarMonth(m => {
                     const d = new Date(
@@ -1788,6 +1818,9 @@ const isDone = (id: string) =>
                 return (
                   <button
                     key={cell.date}
+                    aria-label={fmtDayLabel(
+                      cell.date
+                    )}
                     className={`cal-day ${
                       cell.inMonth
                         ? ''
