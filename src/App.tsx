@@ -1130,6 +1130,52 @@ const isDone = (id: string) =>
     })
   }
 
+  const deleteNote = async (id: string) => {
+    if (!supabase) return
+
+    const {
+      data: userData,
+    } = await supabase.auth.getUser()
+
+    const user = userData.user
+
+    if (!user) return
+
+    const { error } = await supabase
+      .from('notes')
+      .delete()
+      .eq('id', id)
+      .eq('user_id', user.id)
+
+    if (error) {
+      console.error(
+        'Error eliminando nota:',
+        error
+      )
+      toastMsg('No se pudo eliminar la nota', 'error')
+      return
+    }
+
+    setStore(s => ({
+      ...s,
+      notes: s.notes.filter(n => n.id !== id),
+    }))
+
+    toastMsg('Nota eliminada', 'info')
+  }
+
+  const requestDeleteNote = (n: Note) => {
+    setConfirmState({
+      title: 'Eliminar nota',
+      message:
+        'Esta nota se va a borrar de tu bitácora. Esta acción no se puede deshacer.',
+      action: async () => {
+        setConfirmState(null)
+        await deleteNote(n.id)
+      },
+    })
+  }
+
   /*
    * ============================================================
    * CREAR RECORDATORIO
@@ -2209,6 +2255,16 @@ const isDone = (id: string) =>
                   className="note"
                   key={n.id}
                 >
+                  <button
+                    className="note-delete"
+                    aria-label="Eliminar nota"
+                    onClick={() =>
+                      requestDeleteNote(n)
+                    }
+                  >
+                    <Trash2 size={14} />
+                  </button>
+
                   <p>
                     {n.text}
                   </p>

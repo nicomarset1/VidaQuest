@@ -87,11 +87,12 @@ button,input,textarea,select{font:inherit}
 .weekly-line{height:5px;background:var(--line);border-radius:6px;overflow:hidden}
 .note-composer{padding:14px;border-radius:16px}
 .note-composer p{font-size:12px;font-weight:700;margin:0 0 9px}
-.note-composer textarea{width:100%;height:110px;border:0;background:var(--paper);color:var(--ink);border-radius:10px;padding:11px;font-size:11px}
+.note-composer textarea{width:100%;height:110px;border:0;background:var(--paper);color:var(--ink);border-radius:10px;padding:11px;font-size:16px}
 .note-composer button,.primary{border:0;background:var(--grad-1);color:#f5ffe8;width:100%;border-radius:10px;padding:12px;font-size:11px;font-weight:700;margin-top:9px}
-.note{padding:14px;border-radius:13px;margin-bottom:8px}
-.note p{font-size:11px}
+.note{padding:14px;border-radius:13px;margin-bottom:8px;position:relative}
+.note p{font-size:11px;padding-right:22px;margin:0 0 8px}
 .note small{font:9px 'DM Mono';color:var(--muted)}
+.note-delete{position:absolute;top:12px;right:12px;border:0;background:transparent;color:var(--muted);padding:2px}
 .empty{border:1px dashed var(--line);color:var(--muted);border-radius:14px;padding:24px;text-align:center;font-size:11px}
 .celebrate{position:fixed;top:20px;left:50%;transform:translateX(-50%);background:#243021;color:#e8ff9e;z-index:20;border-radius:50px;padding:11px 16px;display:flex;gap:7px;font-weight:800;font-size:12px;animation:celebrate 1.6s both}
 .celebrate.error{background:#4a2622;color:#ffb4a8}
@@ -105,7 +106,7 @@ button,input,textarea,select{font:inherit}
 .sheet h2{font-size:20px;margin:13px 0 5px}
 .sheet>p{font-size:11px;color:var(--muted)}
 .sheet p.alert-error{display:flex;align-items:center;gap:6px;background:var(--alert-bg);color:var(--alert-ink);border-radius:9px;padding:9px 11px;font-size:11px;margin:12px 0 0}
-.sheet input,.sheet select{border:1px solid var(--line);border-radius:10px;padding:12px;width:100%;font-size:12px;margin-top:8px;background:var(--card);color:var(--ink)}
+.sheet input,.sheet select{border:1px solid var(--line);border-radius:10px;padding:12px;width:100%;font-size:16px;margin-top:8px;background:var(--card);color:var(--ink)}
 .form-row{display:flex;gap:8px}
 .form-row input{width:122px}
 .form-row .half{width:auto;flex:1;min-width:0}
