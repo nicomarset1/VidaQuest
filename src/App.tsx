@@ -97,6 +97,104 @@ const THEMES = [
   { id: 'uva', name: 'Uva', dark: true, accent: '#c9a3ff' },
 ] as const
 
+const CUSTOM_THEME_VARS = [
+  '--ink',
+  '--muted',
+  '--line',
+  '--paper',
+  '--card',
+  '--accent',
+  '--accent-text',
+  '--accent-soft',
+  '--track',
+  '--grad-1',
+  '--grad-2',
+  '--alert-bg',
+  '--alert-ink',
+] as const
+
+const hexToHsl = (hex: string): [number, number, number] => {
+  const r = parseInt(hex.slice(1, 3), 16) / 255
+  const g = parseInt(hex.slice(3, 5), 16) / 255
+  const b = parseInt(hex.slice(5, 7), 16) / 255
+
+  const max = Math.max(r, g, b)
+  const min = Math.min(r, g, b)
+  const l = (max + min) / 2
+
+  if (max === min) return [0, 0, l * 100]
+
+  const d = max - min
+  const s = l > 0.5 ? d / (2 - max - min) : d / (max + min)
+
+  let h = 0
+  if (max === r) h = (g - b) / d + (g < b ? 6 : 0)
+  else if (max === g) h = (b - r) / d + 2
+  else h = (r - g) / d + 4
+
+  return [h * 60, s * 100, l * 100]
+}
+
+const hslToHex = (h: number, s: number, l: number) => {
+  const hue = ((h % 360) + 360) % 360
+  const sat = Math.max(0, Math.min(100, s)) / 100
+  const light = Math.max(0, Math.min(100, l)) / 100
+
+  const c = (1 - Math.abs(2 * light - 1)) * sat
+  const x = c * (1 - Math.abs(((hue / 60) % 2) - 1))
+  const m = light - c / 2
+
+  const [r, g, b] =
+    hue < 60
+      ? [c, x, 0]
+      : hue < 120
+        ? [x, c, 0]
+        : hue < 180
+          ? [0, c, x]
+          : hue < 240
+            ? [0, x, c]
+            : hue < 300
+              ? [x, 0, c]
+              : [c, 0, x]
+
+  const toHex = (v: number) =>
+    Math.round((v + m) * 255)
+      .toString(16)
+      .padStart(2, '0')
+
+  return `#${toHex(r)}${toHex(g)}${toHex(b)}`
+}
+
+const buildCustomTheme = (primary: string, secondary: string) => {
+  const [ph, ps, pl] = hexToHsl(primary)
+  const [sh, ss, sl] = hexToHsl(secondary)
+  const dark = sl < 50
+
+  return {
+    '--ink': hslToHex(sh, Math.min(ss, 15), dark ? 94 : 15),
+    '--muted': hslToHex(sh, Math.min(ss, 15), dark ? 68 : 45),
+    '--line': hslToHex(sh, Math.min(ss, 20), dark ? 26 : 90),
+    '--paper': hslToHex(sh, Math.min(ss, 25), dark ? 10 : 96),
+    '--card': hslToHex(sh, Math.min(ss, 20), dark ? 15 : 100),
+    '--accent': hslToHex(
+      ph,
+      Math.max(ps, 55),
+      Math.min(Math.max(pl, 55), 80)
+    ),
+    '--accent-text': hslToHex(
+      ph,
+      Math.max(ps, 40),
+      dark ? 65 : 35
+    ),
+    '--accent-soft': hslToHex(ph, Math.min(ps, 55), 90),
+    '--track': hslToHex(sh, Math.min(ss, 15), dark ? 24 : 88),
+    '--grad-1': hslToHex(sh, Math.min(ss + 10, 45), 16),
+    '--grad-2': hslToHex(sh, Math.min(ss + 10, 45), 8),
+    '--alert-bg': dark ? '#3a2422' : '#fbe7e4',
+    '--alert-ink': dark ? '#f2a89c' : '#a5453a',
+  } as const
+}
+
 const starter: Store = {
   tasks: [
     {
@@ -179,9 +277,28 @@ export default function App() {
 
     if (saved === 'dark') return 'medianoche'
     if (saved === 'light') return 'bosque'
+    if (saved === 'custom') return 'custom'
     if (THEMES.some(t => t.id === saved)) return saved as string
 
     return 'bosque'
+  })
+
+  const [customColors, setCustomColors] = useState<{
+    primary: string
+    secondary: string
+  }>(() => {
+    try {
+      return {
+        primary: '#ff8a65',
+        secondary: '#171c26',
+        ...JSON.parse(
+          localStorage.getItem('vidaquest-custom-colors') ||
+            '{}'
+        ),
+      }
+    } catch {
+      return { primary: '#ff8a65', secondary: '#171c26' }
+    }
   })
 
   const [authUser, setAuthUser] = useState<{
@@ -392,7 +509,32 @@ export default function App() {
     document.documentElement.dataset.theme = theme
 
     localStorage.setItem('vidaquest-theme', theme)
-  }, [theme])
+
+    if (theme === 'custom') {
+      const palette = buildCustomTheme(
+        customColors.primary,
+        customColors.secondary
+      )
+
+      for (const key of CUSTOM_THEME_VARS) {
+        document.documentElement.style.setProperty(
+          key,
+          palette[key]
+        )
+      }
+    } else {
+      for (const key of CUSTOM_THEME_VARS) {
+        document.documentElement.style.removeProperty(key)
+      }
+    }
+  }, [theme, customColors])
+
+  useEffect(() => {
+    localStorage.setItem(
+      'vidaquest-custom-colors',
+      JSON.stringify(customColors)
+    )
+  }, [customColors])
 
   useEffect(() => {
     navigator.serviceWorker?.register('/sw.js')
@@ -2198,7 +2340,74 @@ const isDone = (id: string) =>
                       </small>
                     </button>
                   ))}
+
+                  <button
+                    className={`theme-swatch ${
+                      theme === 'custom'
+                        ? 'active'
+                        : ''
+                    }`}
+                    onClick={() =>
+                      setTheme('custom')
+                    }
+                  >
+                    <span className="theme-preview">
+                      <i
+                        style={{
+                          background: `linear-gradient(135deg, ${customColors.primary}, ${customColors.secondary})`,
+                        }}
+                      />
+                      {theme === 'custom' && (
+                        <Check size={14} />
+                      )}
+                    </span>
+
+                    <b>Personalizado</b>
+
+                    <small>
+                      <Palette size={11} />A
+                      tu gusto
+                    </small>
+                  </button>
                 </div>
+
+                {theme === 'custom' && (
+                  <div className="custom-colors">
+                    <label>
+                      Color primario
+                      <input
+                        type="color"
+                        value={
+                          customColors.primary
+                        }
+                        onChange={e =>
+                          setCustomColors(c => ({
+                            ...c,
+                            primary:
+                              e.target.value,
+                          }))
+                        }
+                      />
+                    </label>
+
+                    <label>
+                      Color secundario
+                      <input
+                        type="color"
+                        value={
+                          customColors.secondary
+                        }
+                        onChange={e =>
+                          setCustomColors(c => ({
+                            ...c,
+                            secondary:
+                              e.target.value,
+                          }))
+                        }
+                      />
+                    </label>
+                  </div>
+                )}
               </>
             )}
 
