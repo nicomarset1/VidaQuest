@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import {
   Bell,
+  BellRing,
   Calendar,
   Check,
   ChevronLeft,
@@ -198,6 +199,10 @@ export default function App() {
     action: () => void
   } | null>(null)
 
+  const [pushStatus, setPushStatus] = useState<
+    'unsupported' | 'needs-install' | 'off' | 'on' | 'loading'
+  >('off')
+
   const [task, setTask] = useState({
     title: '',
     area: 'Personal',
@@ -391,6 +396,33 @@ export default function App() {
 
   useEffect(() => {
     navigator.serviceWorker?.register('/sw.js')
+  }, [])
+
+  useEffect(() => {
+    const supported =
+      'serviceWorker' in navigator && 'PushManager' in window
+
+    if (!supported) {
+      setPushStatus('unsupported')
+      return
+    }
+
+    const isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent)
+
+    const isStandalone =
+      window.matchMedia('(display-mode: standalone)').matches ||
+      (navigator as unknown as { standalone?: boolean })
+        .standalone === true
+
+    if (isIOS && !isStandalone) {
+      setPushStatus('needs-install')
+      return
+    }
+
+    navigator.serviceWorker.ready.then(async reg => {
+      const sub = await reg.pushManager.getSubscription()
+      setPushStatus(sub ? 'on' : 'off')
+    })
   }, [])
 
   /*
@@ -1055,6 +1087,141 @@ const isDone = (id: string) =>
     setSheet(null)
     toastMsg('Sesión cerrada', 'info')
   }
+
+  /*
+   * ============================================================
+   * NOTIFICACIONES PUSH
+   * ============================================================
+   */
+
+  const urlBase64ToUint8Array = (base64String: string) => {
+    const padding = '='.repeat(
+      (4 - (base64String.length % 4)) % 4
+    )
+
+    const base64 = (base64String + padding)
+      .replace(/-/g, '+')
+      .replace(/_/g, '/')
+
+    const rawData = atob(base64)
+
+    return Uint8Array.from(
+      [...rawData].map(c => c.charCodeAt(0))
+    )
+  }
+
+  const enablePush = async () => {
+    if (!supabase) {
+      toastMsg('Conectá Supabase primero', 'error')
+      return
+    }
+
+    if (!authUser) {
+      toastMsg('Iniciá sesión primero', 'error')
+      return
+    }
+
+    const vapidKey = import.meta.env.VITE_VAPID_PUBLIC_KEY
+
+    if (!vapidKey) {
+      toastMsg(
+        'Falta configurar la clave VAPID',
+        'error'
+      )
+      return
+    }
+
+    setPushStatus('loading')
+
+    const permission =
+      await Notification.requestPermission()
+
+    if (permission !== 'granted') {
+      setPushStatus('off')
+      toastMsg(
+        'No diste permiso para notificaciones',
+        'error'
+      )
+      return
+    }
+
+    const reg = await navigator.serviceWorker.ready
+
+    const sub = await reg.pushManager.subscribe({
+      userVisibleOnly: true,
+      applicationServerKey:
+        urlBase64ToUint8Array(vapidKey),
+    })
+
+    const json = sub.toJSON()
+
+    const { error } = await supabase
+      .from('push_subscriptions')
+      .upsert(
+        {
+          user_id: authUser.id,
+          endpoint: json.endpoint!,
+          p256dh: json.keys!.p256dh,
+          auth: json.keys!.auth,
+          last_seen_at: new Date().toISOString(),
+        },
+        { onConflict: 'endpoint' }
+      )
+
+    if (error) {
+      console.error(
+        'Error guardando suscripción push:',
+        error
+      )
+      setPushStatus('off')
+      toastMsg(
+        'No se pudieron activar las notificaciones',
+        'error'
+      )
+      return
+    }
+
+    setPushStatus('on')
+    toastMsg('Notificaciones activadas')
+  }
+
+  const disablePush = async () => {
+    const reg = await navigator.serviceWorker.ready
+    const sub = await reg.pushManager.getSubscription()
+
+    if (sub) {
+      if (supabase) {
+        await supabase
+          .from('push_subscriptions')
+          .delete()
+          .eq('endpoint', sub.endpoint)
+      }
+
+      await sub.unsubscribe()
+    }
+
+    setPushStatus('off')
+    toastMsg('Notificaciones desactivadas', 'info')
+  }
+
+  useEffect(() => {
+    if (!supabase || !authUser || pushStatus !== 'on')
+      return
+
+    navigator.serviceWorker.ready.then(async reg => {
+      const sub =
+        await reg.pushManager.getSubscription()
+
+      if (sub) {
+        await supabase!
+          .from('push_subscriptions')
+          .update({
+            last_seen_at: new Date().toISOString(),
+          })
+          .eq('endpoint', sub.endpoint)
+      }
+    })
+  }, [authUser, pushStatus])
 
   /*
    * ============================================================
@@ -2112,6 +2279,53 @@ const isDone = (id: string) =>
                     </small>
                   </span>
                 </button>
+
+                {authUser && (
+                  <button
+                    className="menu-row"
+                    disabled={
+                      pushStatus === 'unsupported' ||
+                      pushStatus === 'needs-install' ||
+                      pushStatus === 'loading'
+                    }
+                    onClick={
+                      pushStatus === 'on'
+                        ? disablePush
+                        : enablePush
+                    }
+                  >
+                    {pushStatus === 'loading' ? (
+                      <LoaderCircle
+                        size={20}
+                        className="spin"
+                      />
+                    ) : (
+                      <BellRing />
+                    )}
+
+                    <span>
+                      <b>
+                        Notificaciones push
+                      </b>
+
+                      <small>
+                        {pushStatus ===
+                          'unsupported' &&
+                          'No disponible en este navegador'}
+                        {pushStatus ===
+                          'needs-install' &&
+                          'Agregá la app a tu pantalla de inicio primero'}
+                        {pushStatus === 'off' &&
+                          'Racha, recordatorios y más'}
+                        {pushStatus === 'on' &&
+                          'Activadas · tocá para desactivar'}
+                        {pushStatus ===
+                          'loading' &&
+                          'Activando...'}
+                      </small>
+                    </span>
+                  </button>
+                )}
 
                 {authUser && (
                   <button

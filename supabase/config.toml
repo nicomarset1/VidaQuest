@@ -1,0 +1,4 @@
+project_id = "xurazfrecgotkszoznab"
+
+[functions.send-notifications]
+verify_jwt = false
