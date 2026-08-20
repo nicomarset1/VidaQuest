@@ -132,6 +132,7 @@ button,input,textarea,select{font:inherit}
 .field{display:flex;align-items:center;gap:8px;border:1px solid var(--line);border-radius:10px;padding:0 12px;margin-top:8px;background:var(--card);color:var(--muted)}
 .field input{border:0!important;padding:12px 0!important;margin:0!important;flex:1;color:var(--ink);background:transparent}
 .field-action{border:0;background:transparent;color:var(--muted);display:grid;place-items:center;padding:4px}
+.link-btn{border:0;background:transparent;color:var(--accent-text);font-size:11px;font-weight:700;padding:10px 0 0;width:100%;text-align:center}
 .danger{border:0;background:#e6564c;color:#fff;width:100%;border-radius:10px;padding:12px;font-size:11px;font-weight:700;margin-top:9px;display:flex;align-items:center;justify-content:center;gap:7px}
 .danger-row{color:#c0554b!important}
 .danger-row small{color:#c0554b99!important}
