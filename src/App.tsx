@@ -20,6 +20,7 @@ import {
   Mail,
   Moon,
   NotebookPen,
+  Palette,
   Plus,
   Sparkles,
   Sun,
@@ -86,6 +87,15 @@ const fmtReminderDate = (date: string) => {
   }).format(new Date(`${date}T12:00`))
 }
 
+const THEMES = [
+  { id: 'bosque', name: 'Bosque', dark: false, accent: '#d9fc72' },
+  { id: 'arena', name: 'Arena', dark: false, accent: '#ffcf6b' },
+  { id: 'cielo', name: 'Cielo', dark: false, accent: '#7fd4ff' },
+  { id: 'medianoche', name: 'Medianoche', dark: true, accent: '#d9fc72' },
+  { id: 'oceano', name: 'Océano', dark: true, accent: '#6fe3d6' },
+  { id: 'uva', name: 'Uva', dark: true, accent: '#c9a3ff' },
+] as const
+
 const starter: Store = {
   tasks: [
     {
@@ -149,7 +159,13 @@ export default function App() {
   >('home')
 
   const [sheet, setSheet] = useState<
-    'task' | 'reminder' | 'reminders' | 'menu' | 'auth' | null
+    | 'task'
+    | 'reminder'
+    | 'reminders'
+    | 'menu'
+    | 'auth'
+    | 'theme'
+    | null
   >(null)
 
   const [toast, setToast] = useState<{
@@ -157,9 +173,15 @@ export default function App() {
     type: 'success' | 'error' | 'info'
   } | null>(null)
 
-  const [dark, setDark] = useState(
-    () => localStorage.getItem('vidaquest-theme') === 'dark'
-  )
+  const [theme, setTheme] = useState(() => {
+    const saved = localStorage.getItem('vidaquest-theme')
+
+    if (saved === 'dark') return 'medianoche'
+    if (saved === 'light') return 'bosque'
+    if (THEMES.some(t => t.id === saved)) return saved as string
+
+    return 'bosque'
+  })
 
   const [authUser, setAuthUser] = useState<{
     id: string
@@ -362,15 +384,10 @@ export default function App() {
   }, [store])
 
   useEffect(() => {
-    document.documentElement.dataset.theme = dark
-      ? 'dark'
-      : 'light'
+    document.documentElement.dataset.theme = theme
 
-    localStorage.setItem(
-      'vidaquest-theme',
-      dark ? 'dark' : 'light'
-    )
-  }, [dark])
+    localStorage.setItem('vidaquest-theme', theme)
+  }, [theme])
 
   useEffect(() => {
     navigator.serviceWorker?.register('/sw.js')
@@ -498,6 +515,92 @@ const isDone = (id: string) =>
 
     return n
   }, [store.completions])
+
+  const bestStreak = useMemo(() => {
+    const days = Array.from(
+      new Set(store.completions.map(c => c.date))
+    ).sort()
+
+    let best = 0
+    let run = 0
+    let prev: string | null = null
+
+    for (const d of days) {
+      const diff = prev
+        ? (new Date(`${d}T00:00`).getTime() -
+            new Date(`${prev}T00:00`).getTime()) /
+          86400000
+        : 1
+
+      run = diff === 1 ? run + 1 : 1
+      best = Math.max(best, run)
+      prev = d
+    }
+
+    return best
+  }, [store.completions])
+
+  const avgPerDay =
+    store.completions.filter(c => c.date >= weekStart)
+      .length / 7
+
+  const weeklyRate = store.tasks.length
+    ? Math.round(
+        (store.tasks.reduce(
+          (sum, t) =>
+            sum +
+            Math.min(countWeek(t.id), t.weeklyTarget),
+          0
+        ) /
+          store.tasks.reduce(
+            (sum, t) => sum + t.weeklyTarget,
+            0
+          )) *
+          100
+      )
+    : 0
+
+  const areaBreakdown = useMemo(() => {
+    const counts = new Map<string, number>()
+
+    for (const c of store.completions) {
+      const t = store.tasks.find(
+        t => t.id === c.taskId
+      )
+
+      if (!t) continue
+
+      counts.set(
+        t.area,
+        (counts.get(t.area) || 0) + 1
+      )
+    }
+
+    const max = Math.max(1, ...counts.values())
+
+    return [...counts.entries()]
+      .sort((a, b) => b[1] - a[1])
+      .map(([area, count]) => ({
+        area,
+        count,
+        pct: Math.round((count / max) * 100),
+      }))
+  }, [store.completions, store.tasks])
+
+  const heatmap = useMemo(
+    () =>
+      Array.from({ length: 28 }, (_, i) => {
+        const date = ago(27 - i)
+
+        return {
+          date,
+          count: store.completions.filter(
+            c => c.date === date
+          ).length,
+        }
+      }),
+    [store.completions]
+  )
 
   const toastMsg = (
     text: string,
@@ -980,15 +1083,11 @@ const isDone = (id: string) =>
           <button
             className="plain-icon"
             onClick={() =>
-              setDark(!dark)
+              setSheet('theme')
             }
-            aria-label="Cambiar tema"
+            aria-label="Elegir tema"
           >
-            {dark ? (
-              <Sun size={19} />
-            ) : (
-              <Moon size={19} />
-            )}
+            <Palette size={19} />
           </button>
 
           <button
@@ -1183,11 +1282,29 @@ const isDone = (id: string) =>
               />
 
               <Stat
+                label="Racha récord"
+                value={`${bestStreak} días`}
+                icon="🏆"
+              />
+
+              <Stat
                 label="Tareas hechas"
                 value={String(
                   store.completions.length
                 )}
                 icon="✓"
+              />
+
+              <Stat
+                label="Promedio diario"
+                value={avgPerDay.toFixed(1)}
+                icon="📊"
+              />
+
+              <Stat
+                label="Cumplimiento semanal"
+                value={`${weeklyRate}%`}
+                icon="🎯"
               />
             </section>
 
@@ -1256,6 +1373,101 @@ const isDone = (id: string) =>
                   }
                 )}
               </div>
+            </section>
+
+            <section className="chart-card">
+              <p>
+                ÚLTIMOS 28 DÍAS
+              </p>
+
+              <h2>
+                Tu constancia
+              </h2>
+
+              <div className="heatmap">
+                {heatmap.map(({ date, count }) => (
+                  <span
+                    key={date}
+                    className="heat-cell"
+                    title={`${fmtReminderDate(
+                      date
+                    )} · ${count} tarea${
+                      count === 1 ? '' : 's'
+                    }`}
+                    style={{
+                      background: count
+                        ? 'var(--accent)'
+                        : 'var(--line)',
+                      opacity: count
+                        ? Math.min(
+                            1,
+                            0.3 +
+                              (count /
+                                Math.max(
+                                  store.tasks.length,
+                                  1
+                                )) *
+                                0.7
+                          )
+                        : 1,
+                    }}
+                  />
+                ))}
+              </div>
+
+              <div className="heatmap-legend">
+                <span>Menos</span>
+                <i style={{ background: 'var(--line)' }} />
+                <i
+                  style={{
+                    background: 'var(--accent)',
+                    opacity: 0.4,
+                  }}
+                />
+                <i
+                  style={{
+                    background: 'var(--accent)',
+                    opacity: 0.7,
+                  }}
+                />
+                <i style={{ background: 'var(--accent)' }} />
+                <span>Más</span>
+              </div>
+            </section>
+
+            <section className="chart-card">
+              <p>
+                POR ÁREA
+              </p>
+
+              <h2>
+                Dónde ponés tu energía
+              </h2>
+
+              {areaBreakdown.length ? (
+                <div className="area-breakdown">
+                  {areaBreakdown.map(a => (
+                    <div
+                      className="area-row"
+                      key={a.area}
+                    >
+                      <span>{a.area}</span>
+
+                      <div className="area-line">
+                        <i
+                          style={{
+                            width: `${a.pct}%`,
+                          }}
+                        />
+                      </div>
+
+                      <b>{a.count}</b>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <Empty text="Completá tareas para ver tu energía por área." />
+              )}
             </section>
 
             <Title
@@ -1764,6 +1976,63 @@ const isDone = (id: string) =>
                   }))
                 }}
               />
+            )}
+
+            {sheet === 'theme' && (
+              <>
+                <span className="sheet-icon">
+                  <Palette />
+                </span>
+
+                <h2>
+                  Elegí tu tema
+                </h2>
+
+                <p>
+                  Cambia los colores de toda la
+                  aplicación. Se guarda en este
+                  dispositivo.
+                </p>
+
+                <div className="theme-grid">
+                  {THEMES.map(t => (
+                    <button
+                      key={t.id}
+                      className={`theme-swatch ${
+                        theme === t.id
+                          ? 'active'
+                          : ''
+                      }`}
+                      onClick={() =>
+                        setTheme(t.id)
+                      }
+                    >
+                      <span
+                        className="theme-preview"
+                        data-theme={t.id}
+                      >
+                        <i />
+                        {theme === t.id && (
+                          <Check size={14} />
+                        )}
+                      </span>
+
+                      <b>{t.name}</b>
+
+                      <small>
+                        {t.dark ? (
+                          <Moon size={11} />
+                        ) : (
+                          <Sun size={11} />
+                        )}
+                        {t.dark
+                          ? 'Oscuro'
+                          : 'Claro'}
+                      </small>
+                    </button>
+                  ))}
+                </div>
+              </>
             )}
 
             {sheet === 'menu' && (
