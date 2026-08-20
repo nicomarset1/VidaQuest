@@ -387,7 +387,13 @@ export default function App() {
     target: 4,
   })
 
-  const [reminder, setReminder] = useState({
+  const [reminder, setReminder] = useState<{
+    id: string | null
+    title: string
+    time: string
+    date: string
+  }>({
+    id: null,
     title: '',
     time: '09:00',
     date: iso(),
@@ -1268,6 +1274,7 @@ const isDone = (id: string) =>
     }))
 
     setReminder({
+      id: null,
       title: '',
       date: iso(),
       time: '09:00',
@@ -1280,6 +1287,149 @@ const isDone = (id: string) =>
         newReminder.date
       )} · ${newReminder.time}`
     )
+  }
+
+  const updateReminder = async () => {
+    if (!reminder.id || !reminder.title.trim()) return
+
+    if (!supabase) {
+      toastMsg('Conectá Supabase primero', 'error')
+      return
+    }
+
+    const target = new Date(
+      `${reminder.date}T${reminder.time}`
+    )
+
+    if (
+      Number.isNaN(target.getTime()) ||
+      target.getTime() <= Date.now()
+    ) {
+      toastMsg('Elegí una fecha y hora futura', 'error')
+      return
+    }
+
+    const {
+      data: userData,
+    } = await supabase.auth.getUser()
+
+    const user = userData.user
+
+    if (!user) {
+      toastMsg('Iniciá sesión primero', 'error')
+      return
+    }
+
+    const { error } = await supabase
+      .from('reminders')
+      .update({
+        title: reminder.title.trim(),
+        date: reminder.date,
+        time: reminder.time,
+        notified_1h: false,
+        notified_due: false,
+      })
+      .eq('id', reminder.id)
+      .eq('user_id', user.id)
+
+    if (error) {
+      console.error(
+        'Error actualizando recordatorio:',
+        error
+      )
+      toastMsg('No se pudo guardar el cambio', 'error')
+      return
+    }
+
+    const editedId = reminder.id
+    const editedTitle = reminder.title.trim()
+    const editedDate = reminder.date
+    const editedTime = reminder.time
+
+    setStore(s => ({
+      ...s,
+      reminders: s.reminders.map(r =>
+        r.id === editedId
+          ? {
+              ...r,
+              title: editedTitle,
+              date: editedDate,
+              time: editedTime,
+            }
+          : r
+      ),
+    }))
+
+    setReminder({
+      id: null,
+      title: '',
+      date: iso(),
+      time: '09:00',
+    })
+
+    setSheet(null)
+
+    toastMsg('Recordatorio actualizado')
+  }
+
+  const deleteReminder = async (id: string) => {
+    if (!supabase) return
+
+    const {
+      data: userData,
+    } = await supabase.auth.getUser()
+
+    const user = userData.user
+
+    if (!user) return
+
+    const { error } = await supabase
+      .from('reminders')
+      .delete()
+      .eq('id', id)
+      .eq('user_id', user.id)
+
+    if (error) {
+      console.error(
+        'Error eliminando recordatorio:',
+        error
+      )
+      toastMsg(
+        'No se pudo eliminar el recordatorio',
+        'error'
+      )
+      return
+    }
+
+    setStore(s => ({
+      ...s,
+      reminders: s.reminders.filter(
+        r => r.id !== id
+      ),
+    }))
+
+    toastMsg('Recordatorio eliminado', 'info')
+  }
+
+  const requestDeleteReminder = (r: Reminder) => {
+    setConfirmState({
+      title: 'Eliminar recordatorio',
+      message: `Vas a eliminar "${r.title}". Esta acción no se puede deshacer.`,
+      action: async () => {
+        setConfirmState(null)
+        await deleteReminder(r.id)
+      },
+    })
+  }
+
+  const startEditReminder = (r: Reminder) => {
+    setReminder({
+      id: r.id,
+      title: r.title,
+      time: r.time,
+      date: r.date,
+    })
+    setSheet('reminder')
   }
 
   /*
@@ -1584,9 +1734,15 @@ const isDone = (id: string) =>
               </h1>
 
               <button
-                onClick={() =>
+                onClick={() => {
+                  setReminder({
+                    id: null,
+                    title: '',
+                    time: '09:00',
+                    date: iso(),
+                  })
                   setSheet('reminder')
-                }
+                }}
                 className="tiny-action"
               >
                 <Bell size={14} />
@@ -1866,6 +2022,7 @@ const isDone = (id: string) =>
                 <button
                   onClick={() => {
                     setReminder({
+                      id: null,
                       title: '',
                       time: '09:00',
                       date: selectedDay,
@@ -1885,9 +2042,26 @@ const isDone = (id: string) =>
                       className="cal-item"
                       key={r.id}
                     >
-                      <Bell size={14} />
-                      <span>{r.title}</span>
-                      <b>{r.time}</b>
+                      <button
+                        className="cal-item-main"
+                        onClick={() =>
+                          startEditReminder(r)
+                        }
+                      >
+                        <Bell size={14} />
+                        <span>{r.title}</span>
+                        <b>{r.time}</b>
+                      </button>
+
+                      <button
+                        className="cal-item-delete"
+                        aria-label={`Eliminar ${r.title}`}
+                        onClick={() =>
+                          requestDeleteReminder(r)
+                        }
+                      >
+                        <Trash2 size={13} />
+                      </button>
                     </div>
                   ))}
                 </div>
@@ -2508,13 +2682,15 @@ const isDone = (id: string) =>
                 </span>
 
                 <h2>
-                  Nuevo recordatorio
+                  {reminder.id
+                    ? 'Editar recordatorio'
+                    : 'Nuevo recordatorio'}
                 </h2>
 
                 <p>
-                  Te avisaremos en este
-                  dispositivo cuando la
-                  aplicación esté abierta.
+                  Te vamos a avisar en tu
+                  teléfono cuando llegue la
+                  fecha y hora.
                 </p>
 
                 <input
@@ -2568,12 +2744,36 @@ const isDone = (id: string) =>
                 <button
                   className="primary"
                   onClick={
-                    addReminder
+                    reminder.id
+                      ? updateReminder
+                      : addReminder
                   }
                 >
                   <Calendar size={16} />
-                  Guardar recordatorio
+                  {reminder.id
+                    ? 'Guardar cambios'
+                    : 'Guardar recordatorio'}
                 </button>
+
+                {reminder.id && (
+                  <button
+                    className="danger"
+                    onClick={() => {
+                      const current =
+                        store.reminders.find(
+                          r =>
+                            r.id === reminder.id
+                        )
+                      if (!current) return
+                      requestDeleteReminder(
+                        current
+                      )
+                    }}
+                  >
+                    <Trash2 size={16} />
+                    Eliminar recordatorio
+                  </button>
+                )}
               </>
             )}
 
@@ -2582,14 +2782,38 @@ const isDone = (id: string) =>
                 data={
                   store.reminders
                 }
-                add={() =>
-                  setSheet(
-                    'reminder'
-                  )
-                }
+                add={() => {
+                  setReminder({
+                    id: null,
+                    title: '',
+                    time: '09:00',
+                    date: iso(),
+                  })
+                  setSheet('reminder')
+                }}
+                onEdit={startEditReminder}
+                onDelete={requestDeleteReminder}
                 toggle={async id => {
-                  if (!supabase)
+                  if (!supabase) {
+                    toastMsg(
+                      'Conectá Supabase primero',
+                      'error'
+                    )
                     return
+                  }
+
+                  const {
+                    data: userData,
+                  } =
+                    await supabase.auth.getUser()
+
+                  if (!userData.user) {
+                    toastMsg(
+                      'Iniciá sesión primero',
+                      'error'
+                    )
+                    return
+                  }
 
                   const reminderItem =
                     store.reminders.find(
@@ -2617,10 +2841,18 @@ const isDone = (id: string) =>
                         'id',
                         id
                       )
+                      .eq(
+                        'user_id',
+                        userData.user.id
+                      )
 
                   if (error) {
                     console.error(
                       error
+                    )
+                    toastMsg(
+                      'No se pudo guardar el cambio',
+                      'error'
                     )
                     return
                   }
@@ -3197,10 +3429,14 @@ function Reminders({
   data,
   add,
   toggle,
+  onEdit,
+  onDelete,
 }: {
   data: Reminder[]
   add: () => void
   toggle: (id: string) => void
+  onEdit: (r: Reminder) => void
+  onDelete: (r: Reminder) => void
 }) {
   return (
     <>
@@ -3223,8 +3459,14 @@ function Reminders({
       <div className="reminders">
         {data.length ? (
           data.map(r => (
-            <label key={r.id}>
-              <span>
+            <div
+              className="reminder-row"
+              key={r.id}
+            >
+              <button
+                className="reminder-row-main"
+                onClick={() => onEdit(r)}
+              >
                 <b>
                   {r.title}
                 </b>
@@ -3232,10 +3474,15 @@ function Reminders({
                 <small>
                   {fmtReminderDate(r.date)} · {r.time}
                 </small>
-              </span>
+              </button>
 
               <input
                 type="checkbox"
+                aria-label={
+                  r.enabled
+                    ? 'Desactivar recordatorio'
+                    : 'Activar recordatorio'
+                }
                 checked={
                   r.enabled
                 }
@@ -3243,7 +3490,15 @@ function Reminders({
                   toggle(r.id)
                 }
               />
-            </label>
+
+              <button
+                className="reminder-row-delete"
+                aria-label={`Eliminar ${r.title}`}
+                onClick={() => onDelete(r)}
+              >
+                <Trash2 size={14} />
+              </button>
+            </div>
           ))
         ) : (
           <Empty text="Todavía no tenés recordatorios." />

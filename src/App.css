@@ -115,11 +115,13 @@ button,input,textarea,select{font:inherit}
 .target input{padding:0;accent-color:var(--accent)}
 .target small{display:block;margin-top:3px}
 .reminders{display:grid;gap:7px;margin-top:11px}
-.reminders label,.menu-row{display:flex;align-items:center;gap:10px;border:1px solid var(--line);padding:11px;border-radius:11px;background:var(--card);color:var(--ink);width:100%;text-align:left;margin-top:8px}
-.reminders label>span,.menu-row span{display:grid;gap:3px;flex:1}
-.reminders b,.menu-row b{font-size:11px}
-.reminders small,.menu-row small{font-size:9px;color:var(--muted)}
-.reminders input{width:38px;height:20px;accent-color:var(--accent)}
+.reminders .reminder-row,.menu-row{display:flex;align-items:center;gap:10px;border:1px solid var(--line);padding:11px;border-radius:11px;background:var(--card);color:var(--ink);width:100%;text-align:left;margin-top:8px}
+.menu-row span{display:grid;gap:3px;flex:1}
+.reminder-row-main{display:grid;gap:3px;flex:1;min-width:0;border:0;background:transparent;padding:0;text-align:left;color:inherit;font:inherit}
+.reminders b,.menu-row b,.reminder-row-main b{font-size:11px}
+.reminders small,.menu-row small,.reminder-row-main small{font-size:9px;color:var(--muted)}
+.reminders input{width:38px;height:20px;accent-color:var(--accent);flex:none}
+.reminder-row-delete{border:0;background:transparent;color:#b66c63;padding:4px;flex:none}
 .new-inline{border:0;background:var(--accent-soft);color:var(--accent-text);padding:9px;border-radius:9px;font-size:10px;font-weight:700;display:flex;gap:5px}
 .menu-row:disabled{opacity:.55}
 .avatar{width:44px;height:44px;border-radius:13px;background:linear-gradient(135deg,var(--grad-1),var(--grad-2));color:var(--accent);display:grid;place-items:center;font-weight:800;font-size:16px;flex:none}
@@ -187,10 +189,12 @@ button,input,textarea,select{font:inherit}
 .cal-day-detail-head button{border:0;background:var(--accent-soft);color:var(--accent-text);padding:8px 12px;border-radius:10px;font-size:10px;font-weight:700;display:flex;gap:5px;align-items:center;white-space:nowrap}
 .cal-list{display:grid;gap:7px;margin-bottom:10px}
 .cal-item{display:flex;align-items:center;gap:8px;border:1px solid var(--line);background:var(--card);border-radius:11px;padding:10px 12px;font-size:11px;color:var(--ink)}
-.cal-item span{flex:1}
+.cal-item span{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .cal-item b{font:10px 'DM Mono';color:var(--muted)}
 .cal-item em{font-style:normal;font:10px 'DM Mono';color:var(--accent-text)}
 .cal-item.done{opacity:.85}
+.cal-item-main{display:flex;align-items:center;gap:8px;flex:1;min-width:0;border:0;background:transparent;padding:0;text-align:left;color:inherit;font:inherit}
+.cal-item-delete{border:0;background:transparent;color:#b66c63;padding:4px;flex:none}
 .custom-colors{display:flex;gap:12px;margin-top:14px}
 .custom-colors label{flex:1;display:flex;flex-direction:column;gap:6px;font-size:10px;color:var(--muted);font-weight:700;text-transform:uppercase;letter-spacing:.5px}
 .custom-colors input[type=color]{border:1px solid var(--line);border-radius:10px;width:100%;height:44px;padding:3px;background:var(--card)}
