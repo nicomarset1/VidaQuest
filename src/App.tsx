@@ -354,7 +354,12 @@ const SHIELD_POLY = [
 
 const SHIELD_W = 132
 const SHIELD_H = 150
-const SHIELD_DEPTH = 15
+const SHIELD_DEPTH = 34
+
+// Luz fija arriba a la izquierda, para sombrear cada pared según hacia
+// dónde mira y que el prisma se lea como un volumen y no como una
+// silueta plana.
+const LIGHT = { x: -0.6, y: -0.8 }
 
 // Para cada arista: largo, centro y ángulo, que es todo lo que hace
 // falta para plantar la pared lateral con un rotateZ + rotateX(90deg).
@@ -368,13 +373,21 @@ const SHIELD_EDGES = SHIELD_POLY.map((p, i) => {
 
   const dx = x2 - x1
   const dy = y2 - y1
+  const len = Math.hypot(dx, dy)
+
+  // Normal hacia afuera (el polígono está en sentido horario con la Y
+  // hacia abajo, así que la normal saliente es (dy, -dx)).
+  const nx = dy / len
+  const ny = -dx / len
 
   return {
     // +0.6 para solapar apenas las paredes y que no se vea la costura.
-    len: Math.hypot(dx, dy) + 0.6,
+    len: len + 0.6,
     cx: (x1 + x2) / 2,
     cy: (y1 + y2) / 2,
     angle: (Math.atan2(dy, dx) * 180) / Math.PI,
+    brightness:
+      0.62 + 0.52 * ((nx * LIGHT.x + ny * LIGHT.y + 1) / 2),
   }
 })
 
@@ -6165,36 +6178,39 @@ const isDone = (id: string) =>
 
             <div className="badge unlocked badge-detail-shield">
               <div className="badge-shield-3d">
-                {SHIELD_EDGES.map((e, i) => (
+                <div className="badge-shield-spin">
+                  {SHIELD_EDGES.map((e, i) => (
+                    <div
+                      key={i}
+                      className={`badge-shield-side ${badgeDetail.tier}`}
+                      style={{
+                        width: `${e.len}px`,
+                        height: `${SHIELD_DEPTH}px`,
+                        left: `${e.cx}px`,
+                        top: `${e.cy}px`,
+                        transform: `translate(-50%,-50%) rotateZ(${e.angle}deg) rotateX(90deg)`,
+                        filter: `brightness(${e.brightness})`,
+                      }}
+                    />
+                  ))}
+
                   <div
-                    key={i}
-                    className={`badge-shield-side ${badgeDetail.tier}`}
-                    style={{
-                      width: `${e.len}px`,
-                      height: `${SHIELD_DEPTH}px`,
-                      left: `${e.cx}px`,
-                      top: `${e.cy}px`,
-                      transform: `translate(-50%,-50%) rotateZ(${e.angle}deg) rotateX(90deg)`,
-                    }}
-                  />
-                ))}
+                    className={`badge-shield badge-shield-front ${badgeDetail.tier}`}
+                  >
+                    <badgeDetail.icon
+                      className="badge-icon"
+                      size={34}
+                    />
+                  </div>
 
-                <div
-                  className={`badge-shield badge-shield-front ${badgeDetail.tier}`}
-                >
-                  <badgeDetail.icon
-                    className="badge-icon"
-                    size={34}
-                  />
-                </div>
-
-                <div
-                  className={`badge-shield badge-shield-back ${badgeDetail.tier}`}
-                >
-                  <badgeDetail.icon
-                    className="badge-icon"
-                    size={34}
-                  />
+                  <div
+                    className={`badge-shield badge-shield-back ${badgeDetail.tier}`}
+                  >
+                    <badgeDetail.icon
+                      className="badge-icon"
+                      size={34}
+                    />
+                  </div>
                 </div>
               </div>
             </div>
