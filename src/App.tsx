@@ -6121,6 +6121,18 @@ const isDone = (id: string) =>
 
             <div className="badge unlocked badge-detail-shield">
               <div className="badge-shield-3d">
+                {Array.from({ length: 9 }).map((_, i) => (
+                  <div
+                    key={i}
+                    className={`badge-shield-rim ${badgeDetail.tier}`}
+                    style={{
+                      transform: `translateZ(${
+                        (i - 4) * 1.6
+                      }px)`,
+                    }}
+                  />
+                ))}
+
                 <div
                   className={`badge-shield badge-shield-front ${badgeDetail.tier}`}
                 >
