@@ -94,13 +94,18 @@ const ago = (n: number) => {
 }
 
 const fmtReminderDate = (date: string) => {
+  if (!date) return ''
   if (date === iso()) return 'Hoy'
   if (date === ago(-1)) return 'Mañana'
+
+  const d = new Date(`${date}T12:00`)
+
+  if (Number.isNaN(d.getTime())) return ''
 
   return new Intl.DateTimeFormat('es-AR', {
     day: 'numeric',
     month: 'short',
-  }).format(new Date(`${date}T12:00`))
+  }).format(d)
 }
 
 const capitalize = (s: string) =>
@@ -879,7 +884,7 @@ const isDone = (id: string) =>
         ? (new Date(`${d}T00:00`).getTime() -
             new Date(`${prev}T00:00`).getTime()) /
           86400000
-        : 1
+        : null
 
       if (diff === 1) {
         run += 1
@@ -2521,7 +2526,9 @@ const isDone = (id: string) =>
                 {heatmap.map(({ date, count }) => (
                   <button
                     key={date}
-                    className="heat-cell"
+                    className={`heat-cell ${
+                      date === iso() ? 'today' : ''
+                    }`}
                     aria-label={`${fmtDayLabel(
                       date
                     )} · ${count} tarea${
@@ -2532,27 +2539,36 @@ const isDone = (id: string) =>
                     )} · ${count} tarea${
                       count === 1 ? '' : 's'
                     }`}
-                    style={{
-                      background: count
-                        ? 'var(--accent)'
-                        : 'var(--line)',
-                      opacity: count
-                        ? Math.min(
-                            1,
-                            0.3 +
-                              (count /
-                                Math.max(
-                                  store.tasks.length,
-                                  1
-                                )) *
-                                0.7
-                          )
-                        : 1,
-                    }}
                     onClick={() =>
                       openDay(date)
                     }
-                  />
+                  >
+                    <i
+                      className="heat-swatch"
+                      style={{
+                        background: count
+                          ? 'var(--accent)'
+                          : 'var(--line)',
+                        opacity: count
+                          ? Math.min(
+                              1,
+                              0.3 +
+                                (count /
+                                  Math.max(
+                                    store.tasks
+                                      .length,
+                                    1
+                                  )) *
+                                  0.7
+                            )
+                          : 1,
+                      }}
+                    />
+
+                    <small className="heat-label">
+                      {fmtReminderDate(date)}
+                    </small>
+                  </button>
                 ))}
               </div>
 

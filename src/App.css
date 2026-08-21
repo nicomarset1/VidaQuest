@@ -70,9 +70,13 @@ button,input,textarea,select{font:inherit}
 .bar-chart div{height:100%;display:flex;flex:1;align-items:center;justify-content:end;flex-direction:column;gap:7px}
 .bar-chart span{display:block;width:100%;max-width:23px;border-radius:6px 6px 1px 1px;background:var(--accent)}
 .bar-chart small{font:9px 'DM Mono';color:var(--muted)}
-.heatmap{display:grid;grid-template-columns:repeat(7,1fr);gap:5px;margin-top:14px}
-.heat-cell{display:block;width:100%;padding-top:100%;border-radius:4px;border:0;cursor:pointer;transition:transform .15s}
-.heat-cell:active{transform:scale(.85)}
+.heatmap{display:grid;grid-template-columns:repeat(7,1fr);gap:6px 5px;margin-top:14px}
+.heat-cell{display:flex;flex-direction:column;align-items:center;gap:3px;width:100%;padding:0;border:0;background:transparent;cursor:pointer;transition:transform .15s}
+.heat-cell:active{transform:scale(.88)}
+.heat-swatch{display:block;width:100%;aspect-ratio:1;border-radius:5px}
+.heat-cell.today .heat-swatch{box-shadow:0 0 0 2px var(--ink)}
+.heat-label{font:7.5px 'DM Mono',monospace;color:var(--muted);white-space:nowrap;line-height:1}
+.heat-cell.today .heat-label{color:var(--accent-text);font-weight:700}
 .heatmap-legend{display:flex;align-items:center;gap:4px;margin-top:10px;font-size:9px;color:var(--muted)}
 .heatmap-legend i{width:10px;height:10px;border-radius:3px;display:inline-block}
 .area-breakdown{display:grid;gap:10px;margin-top:14px}
