@@ -57,8 +57,9 @@ button,input,textarea,select{font:inherit}
 .bottom-nav button.active{color:var(--accent-text)}
 .subpage{animation:slide .25s}
 .page-head{height:70px;display:flex;align-items:center;justify-content:space-between}
-.page-head h1{font-size:19px}
-.page-head button{width:37px;height:37px;border:0;background:var(--card);border-radius:11px;color:var(--ink);display:grid;place-items:center}
+.page-head h1{font-size:19px;flex:1;text-align:center}
+.page-head button{width:37px;height:37px;flex:none;border:0;background:var(--card);border-radius:11px;color:var(--ink);display:grid;place-items:center}
+.page-head>span{width:37px;height:37px;flex:none;display:block}
 .filter{font-size:10px;color:var(--muted);background:var(--card);border:1px solid var(--line);border-radius:8px;padding:9px}
 .stat-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
 .stat{border-radius:14px;padding:13px;width:100%;text-align:left;font:inherit;color:inherit;cursor:pointer;transition:transform .15s}
@@ -243,7 +244,7 @@ button,input,textarea,select{font:inherit}
 @keyframes day-slide-from-right{from{opacity:0;transform:translateX(28px)}to{opacity:1;transform:translateX(0)}}
 @keyframes day-slide-from-left{from{opacity:0;transform:translateX(-28px)}to{opacity:1;transform:translateX(0)}}
 @keyframes float{50%{transform:translateY(-5px)}}
-@keyframes slide{from{opacity:0;transform:translateX(10px)}to{opacity:1}}
+@keyframes slide{from{opacity:0}to{opacity:1}}
 @keyframes up{from{transform:translateY(100%)}to{transform:translateY(0)}}
 @keyframes celebrate{0%,100%{opacity:0;transform:translate(-50%,-10px)}15%,80%{opacity:1;transform:translate(-50%,0)}}
 @media(min-width:641px){body{background:#dfe5dc}.app{box-shadow:0 0 80px #27332318}}

@@ -2100,6 +2100,12 @@ const isDone = (id: string) =>
     ['notes', NotebookPen, 'Notas'],
   ] as const
 
+  const goBack = () => {
+    const order = nav.map(n => n[0])
+    const idx = order.indexOf(view)
+    setView(order[Math.max(0, idx - 1)])
+  }
+
   return (
     <div className="app">
       <header className="top">
@@ -2279,9 +2285,7 @@ const isDone = (id: string) =>
         {view === 'tasks' && (
           <Page
             title="Mis tareas"
-            back={() =>
-              setView('home')
-            }
+            back={goBack}
             action={() => {
               setTask({
                 id: null,
@@ -2312,7 +2316,7 @@ const isDone = (id: string) =>
         {view === 'calendar' && (
           <Page
             title="Calendario"
-            back={() => setView('home')}
+            back={goBack}
           >
             <div className="cal-nav">
               <button
@@ -2525,9 +2529,7 @@ const isDone = (id: string) =>
         {view === 'stats' && (
           <Page
             title="Tu progreso"
-            back={() =>
-              setView('home')
-            }
+            back={goBack}
           >
             <section className="stat-grid">
               <Stat
@@ -2803,9 +2805,7 @@ const isDone = (id: string) =>
         {view === 'notes' && (
           <Page
             title="Bitácora"
-            back={() =>
-              setView('home')
-            }
+            back={goBack}
           >
             <section className="note-composer">
               <p>
