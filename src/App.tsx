@@ -3,6 +3,7 @@ import {
   useMemo,
   useRef,
   useState,
+  type PointerEvent as ReactPointerEvent,
 } from 'react'
 import {
   Bell,
@@ -20,6 +21,7 @@ import {
   EyeOff,
   Flame,
   Gamepad2,
+  GripVertical,
   Home,
   KeyRound,
   Lock,
@@ -53,6 +55,7 @@ type Task = {
   time: string
   color: string
   weeklyTarget: number
+  position: number
 }
 
 type Completion = {
@@ -411,6 +414,7 @@ const starter: Store = {
       time: '07:30',
       color: 'lime',
       weeklyTarget: 4,
+      position: 0,
     },
     {
       id: 'focus',
@@ -420,6 +424,7 @@ const starter: Store = {
       time: '09:00',
       color: 'violet',
       weeklyTarget: 5,
+      position: 1,
     },
     {
       id: 'read',
@@ -429,6 +434,7 @@ const starter: Store = {
       time: '18:30',
       color: 'cyan',
       weeklyTarget: 4,
+      position: 2,
     },
     {
       id: 'plan',
@@ -438,6 +444,7 @@ const starter: Store = {
       time: '21:30',
       color: 'orange',
       weeklyTarget: 5,
+      position: 3,
     },
   ],
   completions: [],
@@ -690,7 +697,8 @@ export default function App() {
     supabase
       .from('tasks')
       .select('*')
-      .eq('user_id', userId),
+      .eq('user_id', userId)
+      .order('position', { ascending: true }),
 
     supabase
       .from('completions')
@@ -744,6 +752,7 @@ export default function App() {
       time: t.time,
       color: t.color,
       weeklyTarget: t.weekly_target,
+      position: t.position ?? 0,
     })
   )
 
@@ -763,7 +772,7 @@ export default function App() {
     const seeded = await supabase
       .from('tasks')
       .insert(
-        starter.tasks.map(t => ({
+        starter.tasks.map((t, i) => ({
           user_id: userId,
           title: t.title,
           area: t.area,
@@ -771,9 +780,11 @@ export default function App() {
           time: t.time,
           weekly_target: t.weeklyTarget,
           color: t.color,
+          position: i,
         }))
       )
       .select()
+      .order('position', { ascending: true })
 
     if (!seeded.error && seeded.data) {
       dbTasks = seeded.data.map((t: any) => ({
@@ -784,6 +795,7 @@ export default function App() {
         time: t.time,
         color: t.color,
         weeklyTarget: t.weekly_target,
+        position: t.position ?? 0,
       }))
     } else if (seeded.error) {
       console.error(
@@ -1539,6 +1551,7 @@ const isDone = (id: string) =>
           ['pink', 'cyan', 'lime'][
             store.tasks.length % 3
           ],
+        position: store.tasks.length,
       })
       .select()
       .single()
@@ -1561,6 +1574,7 @@ const isDone = (id: string) =>
       time: data.time,
       color: data.color,
       weeklyTarget: data.weekly_target,
+      position: data.position ?? store.tasks.length,
     }
 
     setStore(s => ({
@@ -1579,6 +1593,32 @@ const isDone = (id: string) =>
     setSheet(null)
 
     toastMsg('Tarea creada')
+  }
+
+  const reorderTasks = async (newOrder: Task[]) => {
+    setStore(s => ({ ...s, tasks: newOrder }))
+
+    if (!supabase || !authUser) return
+
+    const db = supabase
+    const userId = authUser.id
+
+    const { error } = await Promise.all(
+      newOrder.map((t, i) =>
+        db
+          .from('tasks')
+          .update({ position: i })
+          .eq('id', t.id)
+          .eq('user_id', userId)
+      )
+    ).then(results => ({
+      error: results.find(r => r.error)?.error ?? null,
+    }))
+
+    if (error) {
+      console.error('Error guardando el orden:', error)
+      toastMsg('No se pudo guardar el orden', 'error')
+    }
   }
 
   const updateTask = async () => {
@@ -2995,8 +3035,9 @@ const isDone = (id: string) =>
             }}
           >
             <p className="filter">
-              Tocá una tarea para marcarla.
-              Usá el lápiz para editarla.
+              Tocá una tarea para marcarla. Usá el
+              lápiz para editarla, y el ícono de la
+              izquierda para reordenarlas.
             </p>
 
             <TaskList
@@ -3006,6 +3047,7 @@ const isDone = (id: string) =>
               onEdit={startEditTask}
               onDelete={requestDeleteTask}
               weekly={countWeek}
+              onReorder={reorderTasks}
             />
           </Page>
         )}
@@ -5704,6 +5746,7 @@ function TaskList({
   onEdit,
   onDelete,
   weekly,
+  onReorder,
 }: {
   tasks: Task[]
   done: (id: string) => boolean
@@ -5711,79 +5754,217 @@ function TaskList({
   onEdit?: (t: Task) => void
   onDelete?: (t: Task) => void
   weekly?: (id: string) => number
+  onReorder?: (tasks: Task[]) => void
 }) {
+  const [order, setOrder] = useState(tasks)
+
+  const [dragState, setDragState] = useState<{
+    id: string
+    delta: number
+    fromIndex: number
+    targetIndex: number
+    rowHeight: number
+  } | null>(null)
+
+  const rowRefs = useRef<Record<string, HTMLDivElement | null>>(
+    {}
+  )
+  const startY = useRef(0)
+
+  useEffect(() => {
+    if (!dragState) setOrder(tasks)
+  }, [tasks, dragState])
+
+  const beginDrag = (
+    t: Task,
+    index: number,
+    e: ReactPointerEvent
+  ) => {
+    e.preventDefault()
+
+    const rowHeight =
+      rowRefs.current[t.id]?.getBoundingClientRect()
+        .height ?? 60
+
+    try {
+      ;(e.currentTarget as Element).setPointerCapture(
+        e.pointerId
+      )
+    } catch {
+      // algunos navegadores pueden rechazar la captura;
+      // el arrastre sigue funcionando igual mientras el
+      // dedo no se salga del ícono
+    }
+
+    startY.current = e.clientY
+
+    setDragState({
+      id: t.id,
+      delta: 0,
+      fromIndex: index,
+      targetIndex: index,
+      rowHeight,
+    })
+  }
+
+  const moveDrag = (e: ReactPointerEvent) => {
+    setDragState(s => {
+      if (!s) return s
+
+      const delta = e.clientY - startY.current
+
+      const rawIndex =
+        s.fromIndex + Math.round(delta / s.rowHeight)
+
+      const targetIndex = Math.max(
+        0,
+        Math.min(order.length - 1, rawIndex)
+      )
+
+      return { ...s, delta, targetIndex }
+    })
+  }
+
+  const endDrag = () => {
+    if (!dragState) return
+
+    if (dragState.fromIndex !== dragState.targetIndex) {
+      const next = [...order]
+      const [item] = next.splice(dragState.fromIndex, 1)
+      next.splice(dragState.targetIndex, 0, item)
+      setOrder(next)
+      onReorder?.(next)
+    }
+
+    setDragState(null)
+  }
+
   return (
     <section className="missions">
-      {tasks.length ? (
-        tasks.map(t => (
-          <div
-            className={`mission ${
-              done(t.id)
-                ? 'complete'
-                : ''
-            }`}
-            key={t.id}
-          >
-            <button
-              className="task-main"
-              onClick={() =>
-                onToggle(t.id)
+      {order.length ? (
+        order.map((t, i) => {
+          let style: {
+            transform?: string
+            zIndex?: number
+            transition?: string
+          } = {}
+
+          let className = `mission ${
+            done(t.id) ? 'complete' : ''
+          }`
+
+          if (dragState) {
+            if (t.id === dragState.id) {
+              style = {
+                transform: `translateY(${dragState.delta}px)`,
+                zIndex: 5,
+                transition: 'none',
               }
+              className += ' dragging'
+            } else if (
+              dragState.fromIndex < dragState.targetIndex &&
+              i > dragState.fromIndex &&
+              i <= dragState.targetIndex
+            ) {
+              style = {
+                transform: `translateY(-${dragState.rowHeight}px)`,
+              }
+            } else if (
+              dragState.fromIndex > dragState.targetIndex &&
+              i >= dragState.targetIndex &&
+              i < dragState.fromIndex
+            ) {
+              style = {
+                transform: `translateY(${dragState.rowHeight}px)`,
+              }
+            }
+          }
+
+          return (
+            <div
+              className={className}
+              style={style}
+              key={t.id}
+              ref={el => {
+                rowRefs.current[t.id] = el
+              }}
             >
-              <span className="check">
-                {done(t.id) && (
-                  <Check size={15} />
-                )}
-              </span>
+              {onReorder && (
+                <span
+                  className="drag-handle"
+                  aria-label={`Reordenar ${t.title}`}
+                  onPointerDown={e =>
+                    beginDrag(t, i, e)
+                  }
+                  onPointerMove={moveDrag}
+                  onPointerUp={endDrag}
+                  onPointerCancel={endDrag}
+                >
+                  <GripVertical size={16} />
+                </span>
+              )}
 
-              <i className={t.color} />
-
-              <span>
-                <b>
-                  {t.title}
-                </b>
-
-                <small>
-                  {t.area} · {t.time}
-                  {weekly &&
-                    ` · ${weekly(
-                      t.id
-                    )}/${
-                      t.weeklyTarget
-                    } semanal`}
-                </small>
-              </span>
-
-              <em>
-                +{t.xp} XP
-              </em>
-            </button>
-
-            {onEdit && (
               <button
-                className="edit"
-                aria-label={`Editar ${t.title}`}
+                className="task-main"
                 onClick={() =>
-                  onEdit(t)
+                  onToggle(t.id)
                 }
               >
-                <Pencil size={15} />
-              </button>
-            )}
+                <span className="check">
+                  {done(t.id) && (
+                    <Check size={15} />
+                  )}
+                </span>
 
-            {onDelete && (
-              <button
-                className="delete"
-                aria-label={`Eliminar ${t.title}`}
-                onClick={() =>
-                  onDelete(t)
-                }
-              >
-                <Trash2 size={16} />
+                <i className={t.color} />
+
+                <span>
+                  <b>
+                    {t.title}
+                  </b>
+
+                  <small>
+                    {t.area} · {t.time}
+                    {weekly &&
+                      ` · ${weekly(
+                        t.id
+                      )}/${
+                        t.weeklyTarget
+                      } semanal`}
+                  </small>
+                </span>
+
+                <em>
+                  +{t.xp} XP
+                </em>
               </button>
-            )}
-          </div>
-        ))
+
+              {onEdit && (
+                <button
+                  className="edit"
+                  aria-label={`Editar ${t.title}`}
+                  onClick={() =>
+                    onEdit(t)
+                  }
+                >
+                  <Pencil size={15} />
+                </button>
+              )}
+
+              {onDelete && (
+                <button
+                  className="delete"
+                  aria-label={`Eliminar ${t.title}`}
+                  onClick={() =>
+                    onDelete(t)
+                  }
+                >
+                  <Trash2 size={16} />
+                </button>
+              )}
+            </div>
+          )
+        })
       ) : (
         <Empty text="Todavía no creaste tareas." />
       )}
