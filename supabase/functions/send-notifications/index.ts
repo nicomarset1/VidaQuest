@@ -151,12 +151,14 @@ function minutesToMidnight(now: Date, timeZone: string) {
   return (midnight.getTime() - now.getTime()) / 60000
 }
 
-// Longitud de la racha que terminó ayer (la que está en riesgo, dado que
-// hoy todavía no hay ninguna tarea completada).
-async function currentStreakLength(
+// Longitud de la racha, contada hacia atrás desde `startOffsetDays` días
+// antes de hoy (1 = "la racha que terminó ayer", que es la que está en
+// riesgo si hoy todavía no hay nada completado; 0 = incluye hoy).
+async function streakLength(
   userId: string,
   tz: string,
-  now: Date
+  now: Date,
+  startOffsetDays = 1
 ) {
   const { data } = await supabase
     .from('completions')
@@ -168,12 +170,32 @@ async function currentStreakLength(
   const dates = new Set((data ?? []).map(d => d.date))
 
   let n = 0
-  for (let i = 1; i <= 365; i++) {
+  for (let i = startOffsetDays; i <= 365; i++) {
     if (dates.has(zonedDateString(now, tz, -24 * i))) n++
     else break
   }
 
   return n
+}
+
+const WEEKDAY_INDEX: Record<string, number> = {
+  Sun: 0,
+  Mon: 1,
+  Tue: 2,
+  Wed: 3,
+  Thu: 4,
+  Fri: 5,
+  Sat: 6,
+}
+
+// Día de la semana local (0 = domingo) que corresponde a `now`.
+function zonedWeekdayOf(now: Date, timeZone: string) {
+  const short = new Intl.DateTimeFormat('en-US', {
+    weekday: 'short',
+    timeZone,
+  }).format(now)
+
+  return WEEKDAY_INDEX[short] ?? 0
 }
 
 const STREAK_RISK_CHECKPOINTS = [
@@ -322,7 +344,7 @@ Deno.serve(async req => {
         )
 
         if (!doneToday && doneYesterday) {
-          const streakLen = await currentStreakLength(
+          const streakLen = await streakLength(
             userId,
             tz,
             now
@@ -345,6 +367,76 @@ Deno.serve(async req => {
 
         await logSent(userId, cp.kind, today)
       }
+    }
+
+    // 4) Resumen semanal — domingo a las 20:00 local, cerrando la
+    // semana antes de que empiece la siguiente.
+    if (
+      zonedWeekdayOf(now, tz) === 0 &&
+      hour === 20 &&
+      !(await alreadyLogged(
+        userId,
+        'weekly-recap',
+        today
+      ))
+    ) {
+      const weekStart = zonedDateString(
+        now,
+        tz,
+        -6 * 24
+      )
+
+      const { count: weekCompletions } =
+        await supabase
+          .from('completions')
+          .select('id', {
+            count: 'exact',
+            head: true,
+          })
+          .eq('user_id', userId)
+          .gte('date', weekStart)
+
+      const { data: userTasks } = await supabase
+        .from('tasks')
+        .select('weekly_target')
+        .eq('user_id', userId)
+
+      const weekTarget = (userTasks ?? []).reduce(
+        (sum, t) => sum + (t.weekly_target ?? 0),
+        0
+      )
+
+      if ((weekCompletions ?? 0) > 0) {
+        const pct = weekTarget
+          ? Math.min(
+              100,
+              Math.round(
+                ((weekCompletions ?? 0) /
+                  weekTarget) *
+                  100
+              )
+            )
+          : 0
+
+        const streakLen = await streakLength(
+          userId,
+          tz,
+          now,
+          0
+        )
+
+        for (const s of userSubs) {
+          await sendTo(s, {
+            title: 'VidaQuest',
+            body: `📊 Tu semana: ${weekCompletions} tareas completadas (${pct}% de tus objetivos) y ${streakLen} día${
+              streakLen === 1 ? '' : 's'
+            } de racha. ¡A por la próxima!`,
+            tag: 'weekly-recap',
+          })
+        }
+      }
+
+      await logSent(userId, 'weekly-recap', today)
     }
   }
 

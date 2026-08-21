@@ -38,6 +38,7 @@ import {
   Trash2,
   TriangleAlert,
   Trophy,
+  Users,
   X,
 } from 'lucide-react'
 import { supabase } from './lib/supabase'
@@ -77,6 +78,21 @@ type Store = {
   completions: Completion[]
   reminders: Reminder[]
   notes: Note[]
+}
+
+type Friendship = {
+  id: number
+  requesterId: string
+  addresseeId: string
+  status: 'pending' | 'accepted'
+}
+
+type FriendStats = {
+  totalXP: number
+  completionsCount: number
+  streak: number
+  weekDone: number
+  weekTarget: number
 }
 
 const localDateString = (d: Date) => {
@@ -180,6 +196,98 @@ const levelInfo = (totalXP: number) => {
   }
 
   return { level, xpIntoLevel: remaining, xpForNext: needed }
+}
+
+type AchievementStats = {
+  level: number
+  bestStreak: number
+  completionsCount: number
+  weeklyRate: number
+  friendsCount: number
+}
+
+const ACHIEVEMENTS = [
+  {
+    id: 'streak-3',
+    icon: '🔥',
+    title: 'Racha de 3 días',
+    check: (s: AchievementStats) => s.bestStreak >= 3,
+  },
+  {
+    id: 'streak-7',
+    icon: '🔥',
+    title: 'Racha de 7 días',
+    check: (s: AchievementStats) => s.bestStreak >= 7,
+  },
+  {
+    id: 'streak-30',
+    icon: '🔥',
+    title: 'Racha de 30 días',
+    check: (s: AchievementStats) => s.bestStreak >= 30,
+  },
+  {
+    id: 'level-5',
+    icon: '🏆',
+    title: 'Nivel 5',
+    check: (s: AchievementStats) => s.level >= 5,
+  },
+  {
+    id: 'level-10',
+    icon: '🏆',
+    title: 'Nivel 10',
+    check: (s: AchievementStats) => s.level >= 10,
+  },
+  {
+    id: 'tasks-10',
+    icon: '✅',
+    title: '10 tareas hechas',
+    check: (s: AchievementStats) =>
+      s.completionsCount >= 10,
+  },
+  {
+    id: 'tasks-50',
+    icon: '✅',
+    title: '50 tareas hechas',
+    check: (s: AchievementStats) =>
+      s.completionsCount >= 50,
+  },
+  {
+    id: 'tasks-100',
+    icon: '✅',
+    title: '100 tareas hechas',
+    check: (s: AchievementStats) =>
+      s.completionsCount >= 100,
+  },
+  {
+    id: 'weekly-goal',
+    icon: '🎯',
+    title: 'Meta semanal cumplida',
+    check: (s: AchievementStats) =>
+      s.weeklyRate >= 100,
+  },
+  {
+    id: 'first-friend',
+    icon: '🤝',
+    title: 'Primer amigo agregado',
+    check: (s: AchievementStats) =>
+      s.friendsCount >= 1,
+  },
+] as const
+
+// Racha consecutiva (en días) terminando hoy, a partir de un conjunto
+// de fechas "YYYY-MM-DD". Se usa tanto para la racha propia como para
+// la de un amigo.
+const streakFromDates = (dates: string[] | Set<string>) => {
+  const set = dates instanceof Set ? dates : new Set(dates)
+
+  let n = 0
+
+  for (let i = 0; i < 365; i++) {
+    if (set.has(ago(i))) n++
+    else if (i) break
+  }
+
+  return n
 }
 
 const THEMES = [
@@ -348,7 +456,12 @@ export default function App() {
   const [store, setStore] = useState<Store>(load)
 
   const [view, setView] = useState<
-    'home' | 'tasks' | 'calendar' | 'stats' | 'notes'
+    | 'home'
+    | 'tasks'
+    | 'calendar'
+    | 'stats'
+    | 'notes'
+    | 'friends'
   >('home')
 
   const [calendarMonth, setCalendarMonth] = useState(() => {
@@ -474,6 +587,22 @@ export default function App() {
   const [pushStatus, setPushStatus] = useState<
     'unsupported' | 'needs-install' | 'off' | 'on' | 'loading'
   >('off')
+
+  const [friendships, setFriendships] = useState<
+    Friendship[]
+  >([])
+
+  const [friendEmails, setFriendEmails] = useState<
+    Record<string, string>
+  >({})
+
+  const [friendStats, setFriendStats] = useState<
+    Record<string, FriendStats>
+  >({})
+
+  const [friendSearch, setFriendSearch] = useState('')
+
+  const [friendLoading, setFriendLoading] = useState(false)
 
   const [task, setTask] = useState<{
     id: string | null
@@ -913,23 +1042,13 @@ const isDone = (id: string) =>
     return () => clearTimeout(t)
   }, [levelUp])
 
-  const streak = useMemo(() => {
-    let n = 0
-
-    for (let i = 0; i < 365; i++) {
-      if (
-        store.completions.some(
-          c => c.date === ago(i)
-        )
-      ) {
-        n++
-      } else if (i) {
-        break
-      }
-    }
-
-    return n
-  }, [store.completions])
+  const streak = useMemo(
+    () =>
+      streakFromDates(
+        store.completions.map(c => c.date)
+      ),
+    [store.completions]
+  )
 
   const bestStreakInfo = useMemo(() => {
     const days = Array.from(
@@ -1128,6 +1247,32 @@ const isDone = (id: string) =>
         )
         .filter((t): t is Task => Boolean(t))
     : []
+
+  const acceptedFriends = friendships.filter(
+    f => f.status === 'accepted'
+  )
+
+  const incomingFriendRequests = friendships.filter(
+    f =>
+      f.status === 'pending' &&
+      authUser &&
+      f.addresseeId === authUser.id
+  )
+
+  const outgoingFriendRequests = friendships.filter(
+    f =>
+      f.status === 'pending' &&
+      authUser &&
+      f.requesterId === authUser.id
+  )
+
+  const achievementStats: AchievementStats = {
+    level,
+    bestStreak,
+    completionsCount: store.completions.length,
+    weeklyRate,
+    friendsCount: acceptedFriends.length,
+  }
 
   const toastMsg = (
     text: string,
@@ -2185,6 +2330,269 @@ const isDone = (id: string) =>
 
   /*
    * ============================================================
+   * AMIGOS
+   * ============================================================
+   */
+
+  const loadFriendships = async () => {
+    if (!supabase || !authUser) return
+
+    const { data, error } = await supabase
+      .from('friendships')
+      .select('*')
+      .or(
+        `requester_id.eq.${authUser.id},addressee_id.eq.${authUser.id}`
+      )
+
+    if (error) {
+      console.error('Error cargando amigos:', error)
+      return
+    }
+
+    const rows: Friendship[] = (data || []).map(
+      (f: any) => ({
+        id: f.id,
+        requesterId: f.requester_id,
+        addresseeId: f.addressee_id,
+        status: f.status,
+      })
+    )
+
+    setFriendships(rows)
+
+    const others = Array.from(
+      new Set(
+        rows.map(f =>
+          f.requesterId === authUser.id
+            ? f.addresseeId
+            : f.requesterId
+        )
+      )
+    )
+
+    for (const otherId of others) {
+      const { data: emailData } = await supabase.rpc(
+        'get_related_user_email',
+        { target_id: otherId }
+      )
+
+      if (emailData) {
+        setFriendEmails(e => ({
+          ...e,
+          [otherId]: emailData as unknown as string,
+        }))
+      }
+    }
+
+    for (const f of rows) {
+      if (f.status !== 'accepted') continue
+
+      const otherId =
+        f.requesterId === authUser.id
+          ? f.addresseeId
+          : f.requesterId
+
+      const {
+        data: statsData,
+        error: statsError,
+      } = await supabase.rpc('get_friend_stats', {
+        target_id: otherId,
+      })
+
+      if (statsError || !statsData || !statsData[0])
+        continue
+
+      const row = statsData[0]
+
+      setFriendStats(s => ({
+        ...s,
+        [otherId]: {
+          totalXP: row.total_xp,
+          completionsCount: row.completions_count,
+          streak: streakFromDates(
+            row.completion_dates || []
+          ),
+          weekDone: row.week_done,
+          weekTarget: row.week_target,
+        },
+      }))
+    }
+  }
+
+  const acceptFriendRequest = async (id: number) => {
+    if (!supabase) return
+
+    const { data, error } = await supabase
+      .from('friendships')
+      .update({
+        status: 'accepted',
+        responded_at: new Date().toISOString(),
+      })
+      .eq('id', id)
+      .select()
+
+    if (error || !data || data.length === 0) {
+      toastMsg(
+        'No se pudo aceptar la solicitud',
+        'error'
+      )
+      return
+    }
+
+    toastMsg('¡Ahora son amigos!')
+    await loadFriendships()
+  }
+
+  const ignoreFriendRequest = async (id: number) => {
+    if (!supabase) return
+
+    const { data, error } = await supabase
+      .from('friendships')
+      .delete()
+      .eq('id', id)
+      .select()
+
+    if (error || !data || data.length === 0) {
+      toastMsg(
+        'No se pudo ignorar la solicitud',
+        'error'
+      )
+      return
+    }
+
+    toastMsg('Solicitud ignorada', 'info')
+    await loadFriendships()
+  }
+
+  const requestRemoveFriend = (
+    f: Friendship,
+    email: string
+  ) => {
+    setConfirmState({
+      title: 'Eliminar amistad',
+      message: `Vas a dejar de ser amigo de "${email}". Van a dejar de verse el progreso mutuamente.`,
+      action: async () => {
+        setConfirmState(null)
+
+        if (!supabase) return
+
+        const { data, error } = await supabase
+          .from('friendships')
+          .delete()
+          .eq('id', f.id)
+          .select()
+
+        if (error || !data || data.length === 0) {
+          toastMsg(
+            'No se pudo eliminar la amistad',
+            'error'
+          )
+          return
+        }
+
+        toastMsg('Amistad eliminada', 'info')
+        await loadFriendships()
+      },
+    })
+  }
+
+  const sendFriendRequest = async () => {
+    const email = friendSearch.trim().toLowerCase()
+
+    if (!email) return
+
+    if (!supabase) {
+      toastMsg('Conectá Supabase primero', 'error')
+      return
+    }
+
+    if (!authUser) {
+      toastMsg('Iniciá sesión primero', 'error')
+      return
+    }
+
+    if (email === authUser.email.toLowerCase()) {
+      toastMsg('Ese sos vos', 'error')
+      return
+    }
+
+    setFriendLoading(true)
+
+    const {
+      data: found,
+      error: findError,
+    } = await supabase.rpc('find_user_by_email', {
+      lookup_email: email,
+    })
+
+    if (findError || !found || !found[0]) {
+      setFriendLoading(false)
+      toastMsg(
+        'No encontramos una cuenta con ese correo',
+        'error'
+      )
+      return
+    }
+
+    const targetId = found[0].id as string
+
+    const existing = friendships.find(
+      f =>
+        (f.requesterId === authUser.id &&
+          f.addresseeId === targetId) ||
+        (f.addresseeId === authUser.id &&
+          f.requesterId === targetId)
+    )
+
+    if (existing) {
+      setFriendLoading(false)
+
+      if (existing.status === 'accepted') {
+        toastMsg('Ya son amigos', 'info')
+      } else if (existing.requesterId === authUser.id) {
+        toastMsg(
+          'Ya le mandaste una solicitud',
+          'info'
+        )
+      } else {
+        await acceptFriendRequest(existing.id)
+      }
+
+      return
+    }
+
+    const { error: insertError } = await supabase
+      .from('friendships')
+      .insert({
+        requester_id: authUser.id,
+        addressee_id: targetId,
+      })
+
+    setFriendLoading(false)
+
+    if (insertError) {
+      console.error(
+        'Error enviando solicitud:',
+        insertError
+      )
+      toastMsg(
+        'No se pudo enviar la solicitud',
+        'error'
+      )
+      return
+    }
+
+    setFriendSearch('')
+    toastMsg('Solicitud enviada')
+    await loadFriendships()
+  }
+
+  useEffect(() => {
+    if (view === 'friends') loadFriendships()
+  }, [view, authUser])
+
+  /*
+   * ============================================================
    * NAVEGACIÓN
    * ============================================================
    */
@@ -2198,7 +2606,9 @@ const isDone = (id: string) =>
   ] as const
 
   const goBack = () => {
-    const order = nav.map(n => n[0])
+    const order: (typeof view)[] = nav.map(
+      n => n[0]
+    )
     const idx = order.indexOf(view)
     setView(order[Math.max(0, idx - 1)])
   }
@@ -2896,6 +3306,33 @@ const isDone = (id: string) =>
                 </section>
               )
             })}
+
+            <Title
+              label="LOGROS"
+              title="Insignias"
+            />
+
+            <div className="badge-grid">
+              {ACHIEVEMENTS.map(a => {
+                const unlocked = a.check(
+                  achievementStats
+                )
+
+                return (
+                  <div
+                    className={`badge ${
+                      unlocked ? 'unlocked' : ''
+                    }`}
+                    key={a.id}
+                  >
+                    <span className="badge-icon">
+                      {a.icon}
+                    </span>
+                    <small>{a.title}</small>
+                  </div>
+                )
+              })}
+            </div>
           </Page>
         )}
 
@@ -3042,6 +3479,313 @@ const isDone = (id: string) =>
               <Empty
                 text="Tu bitácora está lista para guardar lo importante."
               />
+            )}
+          </Page>
+        )}
+
+        {view === 'friends' && (
+          <Page
+            title="Amigos"
+            back={() => setView('home')}
+          >
+            <section className="friend-search">
+              <p>
+                Buscá a alguien por su correo para
+                mandarle una solicitud.
+              </p>
+
+              <div className="field">
+                <Mail size={16} />
+
+                <input
+                  type="email"
+                  placeholder="correo@ejemplo.com"
+                  value={friendSearch}
+                  onChange={e =>
+                    setFriendSearch(
+                      e.target.value
+                    )
+                  }
+                  onKeyDown={e =>
+                    e.key === 'Enter' &&
+                    sendFriendRequest()
+                  }
+                />
+              </div>
+
+              <button
+                className="primary"
+                onClick={sendFriendRequest}
+                disabled={friendLoading}
+              >
+                {friendLoading ? (
+                  <LoaderCircle
+                    size={16}
+                    className="spin"
+                  />
+                ) : (
+                  <Users size={16} />
+                )}
+                {friendLoading
+                  ? 'Buscando...'
+                  : 'Enviar solicitud'}
+              </button>
+            </section>
+
+            {incomingFriendRequests.length > 0 && (
+              <>
+                <Title
+                  label="BUZÓN"
+                  title="Solicitudes recibidas"
+                />
+
+                <div className="friend-list">
+                  {incomingFriendRequests.map(
+                    f => {
+                      const email =
+                        friendEmails[
+                          f.requesterId
+                        ]
+
+                      return (
+                        <div
+                          className="friend-row"
+                          key={f.id}
+                        >
+                          <span className="avatar">
+                            {(
+                              email || '?'
+                            )
+                              .charAt(0)
+                              .toUpperCase()}
+                          </span>
+
+                          <div className="friend-row-info">
+                            <b>
+                              {email ||
+                                'Cargando...'}
+                            </b>
+                            <small>
+                              Quiere ser tu
+                              amigo
+                            </small>
+                          </div>
+
+                          <div className="friend-row-actions">
+                            <button
+                              className="friend-accept"
+                              aria-label="Aceptar"
+                              onClick={() =>
+                                acceptFriendRequest(
+                                  f.id
+                                )
+                              }
+                            >
+                              <Check
+                                size={16}
+                              />
+                            </button>
+
+                            <button
+                              className="friend-ignore"
+                              aria-label="Ignorar"
+                              onClick={() =>
+                                ignoreFriendRequest(
+                                  f.id
+                                )
+                              }
+                            >
+                              <X size={16} />
+                            </button>
+                          </div>
+                        </div>
+                      )
+                    }
+                  )}
+                </div>
+              </>
+            )}
+
+            {outgoingFriendRequests.length > 0 && (
+              <>
+                <Title
+                  label="ENVIADAS"
+                  title="Esperando respuesta"
+                />
+
+                <div className="friend-list">
+                  {outgoingFriendRequests.map(
+                    f => {
+                      const email =
+                        friendEmails[
+                          f.addresseeId
+                        ]
+
+                      return (
+                        <div
+                          className="friend-row"
+                          key={f.id}
+                        >
+                          <span className="avatar">
+                            {(
+                              email || '?'
+                            )
+                              .charAt(0)
+                              .toUpperCase()}
+                          </span>
+
+                          <div className="friend-row-info">
+                            <b>
+                              {email ||
+                                'Cargando...'}
+                            </b>
+                            <small>
+                              Solicitud
+                              pendiente
+                            </small>
+                          </div>
+
+                          <button
+                            className="friend-ignore"
+                            aria-label="Cancelar"
+                            onClick={() =>
+                              ignoreFriendRequest(
+                                f.id
+                              )
+                            }
+                          >
+                            <X size={16} />
+                          </button>
+                        </div>
+                      )
+                    }
+                  )}
+                </div>
+              </>
+            )}
+
+            <Title
+              label="TUS AMIGOS"
+              title={`${
+                acceptedFriends.length
+              } conectado${
+                acceptedFriends.length === 1
+                  ? ''
+                  : 's'
+              }`}
+            />
+
+            {acceptedFriends.length ? (
+              <div className="friend-list">
+                {acceptedFriends.map(f => {
+                  const otherId =
+                    f.requesterId ===
+                    authUser?.id
+                      ? f.addresseeId
+                      : f.requesterId
+
+                  const email =
+                    friendEmails[otherId]
+
+                  const stats =
+                    friendStats[otherId]
+
+                  const otherLevel = stats
+                    ? levelInfo(
+                        stats.totalXP
+                      ).level
+                    : null
+
+                  const weekPct =
+                    stats &&
+                    stats.weekTarget
+                      ? Math.min(
+                          100,
+                          Math.round(
+                            (stats.weekDone /
+                              stats.weekTarget) *
+                              100
+                          )
+                        )
+                      : 0
+
+                  return (
+                    <div
+                      className="friend-card"
+                      key={f.id}
+                    >
+                      <div className="friend-card-head">
+                        <span className="avatar">
+                          {(email || '?')
+                            .charAt(0)
+                            .toUpperCase()}
+                        </span>
+
+                        <div className="friend-row-info">
+                          <b>
+                            {email ||
+                              'Cargando...'}
+                          </b>
+
+                          {stats ? (
+                            <small>
+                              Nivel{' '}
+                              {otherLevel} ·{' '}
+                              {stats.totalXP}{' '}
+                              XP
+                            </small>
+                          ) : (
+                            <small>
+                              Cargando
+                              estadísticas...
+                            </small>
+                          )}
+                        </div>
+
+                        <button
+                          className="friend-remove"
+                          aria-label={`Eliminar amistad con ${email || 'este amigo'}`}
+                          onClick={() =>
+                            requestRemoveFriend(
+                              f,
+                              email ||
+                                'este amigo'
+                            )
+                          }
+                        >
+                          <Trash2 size={15} />
+                        </button>
+                      </div>
+
+                      {stats && (
+                        <div className="friend-card-stats">
+                          <div className="friend-stat">
+                            <Flame
+                              size={13}
+                            />
+                            <span>
+                              {stats.streak}{' '}
+                              días
+                            </span>
+                          </div>
+
+                          <div className="friend-stat">
+                            <Target
+                              size={13}
+                            />
+                            <span>
+                              {weekPct}%
+                              esta semana
+                            </span>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
+            ) : (
+              <Empty text="Todavía no tenés amigos conectados. Buscalos por correo arriba." />
             )}
           </Page>
         )}
@@ -3638,6 +4382,43 @@ const isDone = (id: string) =>
                     </small>
                   </span>
                 </button>
+
+                {authUser && (
+                  <button
+                    className="menu-row"
+                    onClick={() => {
+                      setSheet(null)
+                      setView('friends')
+                    }}
+                  >
+                    <Users />
+
+                    <span>
+                      <b>Amigos</b>
+
+                      <small>
+                        {acceptedFriends.length}{' '}
+                        conectado
+                        {acceptedFriends.length === 1
+                          ? ''
+                          : 's'}
+                        {incomingFriendRequests.length >
+                          0 &&
+                          ` · ${incomingFriendRequests.length} solicitud${
+                            incomingFriendRequests.length ===
+                            1
+                              ? ''
+                              : 'es'
+                          } nueva${
+                            incomingFriendRequests.length ===
+                            1
+                              ? ''
+                              : 's'
+                          }`}
+                      </small>
+                    </span>
+                  </button>
+                )}
 
                 {authUser && (
                   <button
