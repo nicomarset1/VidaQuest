@@ -217,12 +217,6 @@ type AchievementStats = {
 
 const ACHIEVEMENTS = [
   {
-    id: 'streak-3',
-    icon: '🔥',
-    title: 'Racha de 3 días',
-    check: (s: AchievementStats) => s.bestStreak >= 3,
-  },
-  {
     id: 'streak-7',
     icon: '🔥',
     title: 'Racha de 7 días',
@@ -233,6 +227,12 @@ const ACHIEVEMENTS = [
     icon: '🔥',
     title: 'Racha de 30 días',
     check: (s: AchievementStats) => s.bestStreak >= 30,
+  },
+  {
+    id: 'streak-100',
+    icon: '🔥',
+    title: 'Racha de 100 días',
+    check: (s: AchievementStats) => s.bestStreak >= 100,
   },
   {
     id: 'level-5',
@@ -247,18 +247,17 @@ const ACHIEVEMENTS = [
     check: (s: AchievementStats) => s.level >= 10,
   },
   {
-    id: 'tasks-10',
-    icon: '✅',
-    title: '10 tareas hechas',
-    check: (s: AchievementStats) =>
-      s.completionsCount >= 10,
+    id: 'level-20',
+    icon: '🏆',
+    title: 'Nivel 20',
+    check: (s: AchievementStats) => s.level >= 20,
   },
   {
-    id: 'tasks-50',
+    id: 'tasks-25',
     icon: '✅',
-    title: '50 tareas hechas',
+    title: '25 tareas hechas',
     check: (s: AchievementStats) =>
-      s.completionsCount >= 50,
+      s.completionsCount >= 25,
   },
   {
     id: 'tasks-100',
@@ -268,18 +267,32 @@ const ACHIEVEMENTS = [
       s.completionsCount >= 100,
   },
   {
-    id: 'weekly-goal',
-    icon: '🎯',
-    title: 'Meta semanal cumplida',
+    id: 'tasks-365',
+    icon: '✅',
+    title: '365 tareas hechas',
     check: (s: AchievementStats) =>
-      s.weeklyRate >= 100,
+      s.completionsCount >= 365,
   },
   {
-    id: 'first-friend',
+    id: 'friends-1',
     icon: '🤝',
     title: 'Primer amigo agregado',
     check: (s: AchievementStats) =>
       s.friendsCount >= 1,
+  },
+  {
+    id: 'friends-3',
+    icon: '🤝',
+    title: '3 amigos conectados',
+    check: (s: AchievementStats) =>
+      s.friendsCount >= 3,
+  },
+  {
+    id: 'friends-5',
+    icon: '🤝',
+    title: '5 amigos conectados',
+    check: (s: AchievementStats) =>
+      s.friendsCount >= 5,
   },
 ] as const
 
