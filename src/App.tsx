@@ -334,6 +334,50 @@ const ACHIEVEMENTS = [
   },
 ] as const
 
+/*
+ * Geometría del escudo 3D del detalle de insignia. Es un prisma real:
+ * dos caras (frente y dorso) separadas en Z, y una pared lateral por
+ * cada arista del polígono. Así el escudo tiene volumen de verdad y
+ * se ve sólido desde cualquier ángulo del giro, en vez de aplastarse
+ * a una línea al pasar de perfil.
+ */
+const SHIELD_POLY = [
+  [50, 2],
+  [85, 13],
+  [100, 38],
+  [92, 68],
+  [50, 100],
+  [8, 68],
+  [0, 38],
+  [15, 13],
+] as const
+
+const SHIELD_W = 132
+const SHIELD_H = 150
+const SHIELD_DEPTH = 15
+
+// Para cada arista: largo, centro y ángulo, que es todo lo que hace
+// falta para plantar la pared lateral con un rotateZ + rotateX(90deg).
+const SHIELD_EDGES = SHIELD_POLY.map((p, i) => {
+  const q = SHIELD_POLY[(i + 1) % SHIELD_POLY.length]
+
+  const x1 = (p[0] / 100) * SHIELD_W
+  const y1 = (p[1] / 100) * SHIELD_H
+  const x2 = (q[0] / 100) * SHIELD_W
+  const y2 = (q[1] / 100) * SHIELD_H
+
+  const dx = x2 - x1
+  const dy = y2 - y1
+
+  return {
+    // +0.6 para solapar apenas las paredes y que no se vea la costura.
+    len: Math.hypot(dx, dy) + 0.6,
+    cx: (x1 + x2) / 2,
+    cy: (y1 + y2) / 2,
+    angle: (Math.atan2(dy, dx) * 180) / Math.PI,
+  }
+})
+
 // Racha consecutiva (en días) terminando hoy, a partir de un conjunto
 // de fechas "YYYY-MM-DD". Se usa tanto para la racha propia como para
 // la de un amigo.
@@ -6121,14 +6165,16 @@ const isDone = (id: string) =>
 
             <div className="badge unlocked badge-detail-shield">
               <div className="badge-shield-3d">
-                {Array.from({ length: 9 }).map((_, i) => (
+                {SHIELD_EDGES.map((e, i) => (
                   <div
                     key={i}
-                    className={`badge-shield-rim ${badgeDetail.tier}`}
+                    className={`badge-shield-side ${badgeDetail.tier}`}
                     style={{
-                      transform: `translateZ(${
-                        (i - 4) * 1.6
-                      }px)`,
+                      width: `${e.len}px`,
+                      height: `${SHIELD_DEPTH}px`,
+                      left: `${e.cx}px`,
+                      top: `${e.cy}px`,
+                      transform: `translate(-50%,-50%) rotateZ(${e.angle}deg) rotateX(90deg)`,
                     }}
                   />
                 ))}
