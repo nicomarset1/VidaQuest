@@ -1309,7 +1309,7 @@ const isDone = (id: string) =>
       return
     }
 
-    const { error } = await supabase
+    const { data, error } = await supabase
       .from('tasks')
       .update({
         title: task.title.trim(),
@@ -1320,12 +1320,18 @@ const isDone = (id: string) =>
       })
       .eq('id', task.id)
       .eq('user_id', user.id)
+      .select()
 
     if (error) {
       console.error(
         'Error actualizando tarea:',
         error
       )
+      toastMsg('No se pudo guardar el cambio', 'error')
+      return
+    }
+
+    if (!data || data.length === 0) {
       toastMsg('No se pudo guardar el cambio', 'error')
       return
     }
@@ -1382,7 +1388,10 @@ const isDone = (id: string) =>
    */
 
   const deleteTask = async (id: string) => {
-    if (!supabase) return
+    if (!supabase) {
+      toastMsg('Conectá Supabase primero', 'error')
+      return
+    }
 
     const {
       data: userData,
@@ -1390,19 +1399,28 @@ const isDone = (id: string) =>
 
     const user = userData.user
 
-    if (!user) return
+    if (!user) {
+      toastMsg('Iniciá sesión primero', 'error')
+      return
+    }
 
-    const { error } = await supabase
+    const { data, error } = await supabase
       .from('tasks')
       .delete()
       .eq('id', id)
       .eq('user_id', user.id)
+      .select()
 
     if (error) {
       console.error(
         'Error eliminando tarea:',
         error
       )
+      toastMsg('No se pudo eliminar la tarea', 'error')
+      return
+    }
+
+    if (!data || data.length === 0) {
       toastMsg('No se pudo eliminar la tarea', 'error')
       return
     }
@@ -1433,7 +1451,10 @@ const isDone = (id: string) =>
   }
 
   const deleteNote = async (id: string) => {
-    if (!supabase) return
+    if (!supabase) {
+      toastMsg('Conectá Supabase primero', 'error')
+      return
+    }
 
     const {
       data: userData,
@@ -1441,19 +1462,28 @@ const isDone = (id: string) =>
 
     const user = userData.user
 
-    if (!user) return
+    if (!user) {
+      toastMsg('Iniciá sesión primero', 'error')
+      return
+    }
 
-    const { error } = await supabase
+    const { data, error } = await supabase
       .from('notes')
       .delete()
       .eq('id', id)
       .eq('user_id', user.id)
+      .select()
 
     if (error) {
       console.error(
         'Error eliminando nota:',
         error
       )
+      toastMsg('No se pudo eliminar la nota', 'error')
+      return
+    }
+
+    if (!data || data.length === 0) {
       toastMsg('No se pudo eliminar la nota', 'error')
       return
     }
@@ -1609,7 +1639,7 @@ const isDone = (id: string) =>
       return
     }
 
-    const { error } = await supabase
+    const { data, error } = await supabase
       .from('reminders')
       .update({
         title: reminder.title.trim(),
@@ -1620,12 +1650,18 @@ const isDone = (id: string) =>
       })
       .eq('id', reminder.id)
       .eq('user_id', user.id)
+      .select()
 
     if (error) {
       console.error(
         'Error actualizando recordatorio:',
         error
       )
+      toastMsg('No se pudo guardar el cambio', 'error')
+      return
+    }
+
+    if (!data || data.length === 0) {
       toastMsg('No se pudo guardar el cambio', 'error')
       return
     }
@@ -1662,7 +1698,10 @@ const isDone = (id: string) =>
   }
 
   const deleteReminder = async (id: string) => {
-    if (!supabase) return
+    if (!supabase) {
+      toastMsg('Conectá Supabase primero', 'error')
+      return
+    }
 
     const {
       data: userData,
@@ -1670,19 +1709,31 @@ const isDone = (id: string) =>
 
     const user = userData.user
 
-    if (!user) return
+    if (!user) {
+      toastMsg('Iniciá sesión primero', 'error')
+      return
+    }
 
-    const { error } = await supabase
+    const { data, error } = await supabase
       .from('reminders')
       .delete()
       .eq('id', id)
       .eq('user_id', user.id)
+      .select()
 
     if (error) {
       console.error(
         'Error eliminando recordatorio:',
         error
       )
+      toastMsg(
+        'No se pudo eliminar el recordatorio',
+        'error'
+      )
+      return
+    }
+
+    if (!data || data.length === 0) {
       toastMsg(
         'No se pudo eliminar el recordatorio',
         'error'
