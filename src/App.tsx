@@ -14,6 +14,7 @@ import {
   ChevronLeft,
   ChevronRight,
   CircleAlert,
+  CircleCheck,
   CirclePlus,
   CircleUserRound,
   ClipboardList,
@@ -218,49 +219,49 @@ type AchievementStats = {
 const ACHIEVEMENTS = [
   {
     id: 'streak-7',
-    icon: '🔥',
+    icon: Flame,
     title: 'Racha de 7 días',
     tier: 'bronze',
     check: (s: AchievementStats) => s.bestStreak >= 7,
   },
   {
     id: 'streak-30',
-    icon: '🔥',
+    icon: Flame,
     title: 'Racha de 30 días',
     tier: 'silver',
     check: (s: AchievementStats) => s.bestStreak >= 30,
   },
   {
     id: 'streak-100',
-    icon: '🔥',
+    icon: Flame,
     title: 'Racha de 100 días',
     tier: 'gold',
     check: (s: AchievementStats) => s.bestStreak >= 100,
   },
   {
     id: 'level-5',
-    icon: '🏆',
+    icon: Trophy,
     title: 'Nivel 5',
     tier: 'bronze',
     check: (s: AchievementStats) => s.level >= 5,
   },
   {
     id: 'level-10',
-    icon: '🏆',
+    icon: Trophy,
     title: 'Nivel 10',
     tier: 'silver',
     check: (s: AchievementStats) => s.level >= 10,
   },
   {
     id: 'level-20',
-    icon: '🏆',
+    icon: Trophy,
     title: 'Nivel 20',
     tier: 'gold',
     check: (s: AchievementStats) => s.level >= 20,
   },
   {
     id: 'tasks-25',
-    icon: '✅',
+    icon: CircleCheck,
     title: '25 tareas hechas',
     tier: 'bronze',
     check: (s: AchievementStats) =>
@@ -268,7 +269,7 @@ const ACHIEVEMENTS = [
   },
   {
     id: 'tasks-100',
-    icon: '✅',
+    icon: CircleCheck,
     title: '100 tareas hechas',
     tier: 'silver',
     check: (s: AchievementStats) =>
@@ -276,7 +277,7 @@ const ACHIEVEMENTS = [
   },
   {
     id: 'tasks-365',
-    icon: '✅',
+    icon: CircleCheck,
     title: '365 tareas hechas',
     tier: 'gold',
     check: (s: AchievementStats) =>
@@ -284,7 +285,7 @@ const ACHIEVEMENTS = [
   },
   {
     id: 'friends-1',
-    icon: '🤝',
+    icon: Users,
     title: 'Primer amigo agregado',
     tier: 'bronze',
     check: (s: AchievementStats) =>
@@ -292,7 +293,7 @@ const ACHIEVEMENTS = [
   },
   {
     id: 'friends-3',
-    icon: '🤝',
+    icon: Users,
     title: '3 amigos conectados',
     tier: 'silver',
     check: (s: AchievementStats) =>
@@ -300,7 +301,7 @@ const ACHIEVEMENTS = [
   },
   {
     id: 'friends-5',
-    icon: '🤝',
+    icon: Users,
     title: '5 amigos conectados',
     tier: 'gold',
     check: (s: AchievementStats) =>
@@ -3854,9 +3855,10 @@ const isDone = (id: string) =>
                     <div
                       className={`badge-shield ${a.tier}`}
                     >
-                      <span className="badge-icon">
-                        {a.icon}
-                      </span>
+                      <a.icon
+                        className="badge-icon"
+                        size={22}
+                      />
                     </div>
 
                     <small>{a.title}</small>
