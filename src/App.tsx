@@ -38,6 +38,7 @@ import {
   Sparkles,
   Sun,
   Target,
+  Timer,
   Trash2,
   TriangleAlert,
   Trophy,
@@ -56,6 +57,7 @@ type Task = {
   color: string
   weeklyTarget: number
   position: number
+  remind: boolean
 }
 
 type Completion = {
@@ -297,6 +299,62 @@ const streakFromDates = (dates: string[] | Set<string>) => {
   return n
 }
 
+const weekTierLabel = (pct: number) => {
+  if (pct >= 90) return '🔥 Semana excelente'
+  if (pct >= 70) return '💪 Semana sólida'
+  if (pct >= 40) return '🙂 Semana pareja'
+  return '🌱 Semana floja, la próxima remontás'
+}
+
+type StreakShieldState = {
+  available: number
+  lastAwardStreak: number
+  consumedDates: string[]
+}
+
+// Igual que streakFromDates, pero un día salteado no corta la racha
+// si hay un protector disponible (se consume uno por hueco, en orden).
+// `newlyConsumed` son los huecos que recién ahora se están cubriendo
+// y todavía no están guardados en la base.
+const shieldedStreakFromDates = (
+  dates: string[] | Set<string>,
+  shields: StreakShieldState
+) => {
+  const set = dates instanceof Set ? dates : new Set(dates)
+  const consumedSet = new Set(shields.consumedDates)
+
+  let remaining = shields.available
+  let n = 0
+  const newlyConsumed: string[] = []
+
+  for (let i = 0; i < 365; i++) {
+    const d = ago(i)
+
+    if (set.has(d)) {
+      n++
+      continue
+    }
+
+    if (i === 0) continue
+
+    if (consumedSet.has(d)) {
+      n++
+      continue
+    }
+
+    if (remaining > 0) {
+      remaining--
+      n++
+      newlyConsumed.push(d)
+      continue
+    }
+
+    break
+  }
+
+  return { streak: n, newlyConsumed }
+}
+
 const THEMES = [
   { id: 'bosque', name: 'Bosque', dark: false, accent: '#d9fc72' },
   { id: 'arena', name: 'Arena', dark: false, accent: '#ffcf6b' },
@@ -415,6 +473,7 @@ const starter: Store = {
       color: 'lime',
       weeklyTarget: 4,
       position: 0,
+      remind: false,
     },
     {
       id: 'focus',
@@ -425,6 +484,7 @@ const starter: Store = {
       color: 'violet',
       weeklyTarget: 5,
       position: 1,
+      remind: false,
     },
     {
       id: 'read',
@@ -435,6 +495,7 @@ const starter: Store = {
       color: 'cyan',
       weeklyTarget: 4,
       position: 2,
+      remind: false,
     },
     {
       id: 'plan',
@@ -445,6 +506,7 @@ const starter: Store = {
       color: 'orange',
       weeklyTarget: 5,
       position: 3,
+      remind: false,
     },
   ],
   completions: [],
@@ -489,6 +551,7 @@ export default function App() {
     | 'menu'
     | 'auth'
     | 'theme'
+    | 'focus'
     | null
   >(null)
 
@@ -532,6 +595,30 @@ export default function App() {
     id: string
     email: string
   } | null>(null)
+
+  const [streakShields, setStreakShields] =
+    useState<StreakShieldState>({
+      available: 0,
+      lastAwardStreak: 0,
+      consumedDates: [],
+    })
+
+  const [focusSession, setFocusSession] = useState<{
+    id: number | null
+    minutes: number
+    endsAt: number
+  } | null>(() => {
+    try {
+      const saved = JSON.parse(
+        localStorage.getItem('vidaquest-focus') || 'null'
+      )
+      return saved && saved.endsAt > Date.now() ? saved : null
+    } catch {
+      return null
+    }
+  })
+
+  const [focusRemainingMs, setFocusRemainingMs] = useState(0)
 
   const [authLoading, setAuthLoading] = useState(false)
 
@@ -629,12 +716,14 @@ export default function App() {
     area: string
     time: string
     target: number
+    remind: boolean
   }>({
     id: null,
     title: '',
     area: 'Personal',
     time: '',
     target: 4,
+    remind: false,
   })
 
   const [reminder, setReminder] = useState<{
@@ -753,6 +842,7 @@ export default function App() {
       color: t.color,
       weeklyTarget: t.weekly_target,
       position: t.position ?? 0,
+      remind: t.remind ?? false,
     })
   )
 
@@ -796,6 +886,7 @@ export default function App() {
         color: t.color,
         weeklyTarget: t.weekly_target,
         position: t.position ?? 0,
+        remind: t.remind ?? false,
       }))
     } else if (seeded.error) {
       console.error(
@@ -1102,13 +1193,79 @@ const isDone = (id: string) =>
     return () => clearTimeout(t)
   }, [levelUp])
 
-  const streak = useMemo(
+  const { streak, newlyConsumed: newlyConsumedShields } = useMemo(
     () =>
-      streakFromDates(
-        store.completions.map(c => c.date)
+      shieldedStreakFromDates(
+        store.completions.map(c => c.date),
+        streakShields
       ),
-    [store.completions]
+    [store.completions, streakShields]
   )
+
+  const loadStreakShields = async () => {
+    if (!supabase || !authUser) return
+
+    const { data } = await supabase
+      .from('streak_shields')
+      .select('available, last_award_streak, consumed_dates')
+      .eq('user_id', authUser.id)
+      .maybeSingle()
+
+    setStreakShields({
+      available: data?.available ?? 0,
+      lastAwardStreak: data?.last_award_streak ?? 0,
+      consumedDates: data?.consumed_dates ?? [],
+    })
+  }
+
+  useEffect(() => {
+    if (authUser) loadStreakShields()
+  }, [authUser])
+
+  useEffect(() => {
+    if (!supabase || !authUser) return
+    if (newlyConsumedShields.length === 0) return
+
+    const db = supabase
+    let cancelled = false
+    ;(async () => {
+      for (const d of newlyConsumedShields) {
+        const { data } = await db.rpc(
+          'consume_streak_shield',
+          { gap_date: d }
+        )
+        if (!cancelled && data && data[0]) {
+          setStreakShields(s => ({
+            ...s,
+            available: data[0].available,
+            consumedDates: data[0].consumed_dates,
+          }))
+        }
+      }
+    })()
+
+    return () => {
+      cancelled = true
+    }
+  }, [newlyConsumedShields, authUser])
+
+  useEffect(() => {
+    if (!supabase || !authUser) return
+    if (streak === 0 || streak % 7 !== 0) return
+    if (streak <= streakShields.lastAwardStreak) return
+
+    supabase
+      .rpc('award_streak_shield', { new_milestone: streak })
+      .then(({ data }) => {
+        if (data && data[0]) {
+          setStreakShields(s => ({
+            ...s,
+            available: data[0].available,
+            lastAwardStreak: data[0].last_award_streak,
+          }))
+        }
+      })
+  }, [streak, streakShields.lastAwardStreak, authUser])
 
   const bestStreakInfo = useMemo(() => {
     const days = Array.from(
@@ -1399,6 +1556,88 @@ const isDone = (id: string) =>
 
   /*
    * ============================================================
+   * ENFOQUE (temporizador standalone)
+   * ============================================================
+   */
+
+  const startFocus = async (minutes: number) => {
+    const endsAt = Date.now() + minutes * 60000
+
+    localStorage.setItem(
+      'vidaquest-focus',
+      JSON.stringify({ id: null, minutes, endsAt })
+    )
+    setFocusSession({ id: null, minutes, endsAt })
+    setSheet(null)
+
+    if (!supabase || !authUser) return
+
+    const { data } = await supabase
+      .from('focus_sessions')
+      .insert({
+        user_id: authUser.id,
+        minutes,
+        ends_at: new Date(endsAt).toISOString(),
+      })
+      .select()
+      .single()
+
+    if (data) {
+      const withId = { id: data.id, minutes, endsAt }
+      localStorage.setItem(
+        'vidaquest-focus',
+        JSON.stringify(withId)
+      )
+      setFocusSession(withId)
+    }
+  }
+
+  // `cancelled`: true si el usuario lo canceló a mano (se borra la
+  // sesión), false si terminó solo y ya lo vio en pantalla (se marca
+  // "notified" para que el push del cron no lo avise de nuevo).
+  const clearFocus = async (cancelled: boolean) => {
+    localStorage.removeItem('vidaquest-focus')
+
+    const current = focusSession
+    setFocusSession(null)
+    setFocusRemainingMs(0)
+
+    if (!supabase || !current?.id) return
+
+    if (cancelled) {
+      await supabase
+        .from('focus_sessions')
+        .delete()
+        .eq('id', current.id)
+    } else {
+      await supabase
+        .from('focus_sessions')
+        .update({ notified: true })
+        .eq('id', current.id)
+    }
+  }
+
+  useEffect(() => {
+    if (!focusSession) return
+
+    const tick = () => {
+      const left = focusSession.endsAt - Date.now()
+      setFocusRemainingMs(Math.max(0, left))
+
+      if (left <= 0) {
+        toastMsg('⏰ ¡Terminó tu sesión de enfoque!')
+        navigator.vibrate?.([120, 60, 120])
+        clearFocus(false)
+      }
+    }
+
+    tick()
+    const id = setInterval(tick, 1000)
+    return () => clearInterval(id)
+  }, [focusSession])
+
+  /*
+   * ============================================================
    * MARCAR / DESMARCAR TAREA
    * ============================================================
    */
@@ -1552,6 +1791,7 @@ const isDone = (id: string) =>
             store.tasks.length % 3
           ],
         position: store.tasks.length,
+        remind: task.remind && !!task.time,
       })
       .select()
       .single()
@@ -1575,6 +1815,7 @@ const isDone = (id: string) =>
       color: data.color,
       weeklyTarget: data.weekly_target,
       position: data.position ?? store.tasks.length,
+      remind: data.remind ?? false,
     }
 
     setStore(s => ({
@@ -1588,6 +1829,7 @@ const isDone = (id: string) =>
       area: 'Personal',
       time: '',
       target: 4,
+      remind: false,
     })
 
     setSheet(null)
@@ -1648,6 +1890,7 @@ const isDone = (id: string) =>
         time: task.time || 'Sin horario',
         weekly_target:
           Number(task.target) || 1,
+        remind: task.remind && !!task.time,
       })
       .eq('id', task.id)
       .eq('user_id', user.id)
@@ -1672,6 +1915,7 @@ const isDone = (id: string) =>
     const editedArea = task.area
     const editedTime = task.time || 'Sin horario'
     const editedTarget = Number(task.target) || 1
+    const editedRemind = task.remind && !!task.time
 
     setStore(s => ({
       ...s,
@@ -1683,6 +1927,7 @@ const isDone = (id: string) =>
               area: editedArea,
               time: editedTime,
               weeklyTarget: editedTarget,
+              remind: editedRemind,
             }
           : t
       ),
@@ -1694,6 +1939,7 @@ const isDone = (id: string) =>
       area: 'Personal',
       time: '',
       target: 4,
+      remind: false,
     })
 
     setSheet(null)
@@ -1708,6 +1954,7 @@ const isDone = (id: string) =>
       area: t.area,
       time: t.time === 'Sin horario' ? '' : t.time,
       target: t.weeklyTarget,
+      remind: t.remind,
     })
     setSheet('task')
   }
@@ -2893,21 +3140,33 @@ const isDone = (id: string) =>
 
               <h1>{greeting()}</h1>
 
-              <button
-                onClick={() => {
-                  setReminder({
-                    id: null,
-                    title: '',
-                    time: '09:00',
-                    date: iso(),
-                  })
-                  setSheet('reminder')
-                }}
-                className="tiny-action"
-              >
-                <Bell size={14} />
-                Crear recordatorio
-              </button>
+              <div className="intro-actions">
+                <button
+                  onClick={() => {
+                    setReminder({
+                      id: null,
+                      title: '',
+                      time: '09:00',
+                      date: iso(),
+                    })
+                    setSheet('reminder')
+                  }}
+                  className="tiny-action"
+                >
+                  <Bell size={14} />
+                  Crear recordatorio
+                </button>
+
+                <button
+                  onClick={() =>
+                    setSheet('focus')
+                  }
+                  className="tiny-action"
+                >
+                  <Timer size={14} />
+                  Enfoque
+                </button>
+              </div>
             </section>
 
             <section className="level-card">
@@ -2971,7 +3230,15 @@ const isDone = (id: string) =>
                 <span>
                   <Flame size={14} />{' '}
                   {streak} días de racha
+                  {streakShields.available > 0 &&
+                    ` · 🛡️×${streakShields.available}`}
                 </span>
+
+                {weeklyRate > 0 && (
+                  <span className="week-tier">
+                    {weekTierLabel(weeklyRate)}
+                  </span>
+                )}
               </div>
 
               <button
@@ -2982,6 +3249,7 @@ const isDone = (id: string) =>
                     area: 'Personal',
                     time: '',
                     target: 4,
+                    remind: false,
                   })
                   setSheet('task')
                 }}
@@ -3030,6 +3298,7 @@ const isDone = (id: string) =>
                 area: 'Personal',
                 time: '',
                 target: 4,
+                remind: false,
               })
               setSheet('task')
             }}
@@ -4284,6 +4553,27 @@ const isDone = (id: string) =>
                   />
                 </div>
 
+                <label className="remind-toggle">
+                  <input
+                    type="checkbox"
+                    checked={task.remind}
+                    disabled={!task.time}
+                    onChange={e =>
+                      setTask({
+                        ...task,
+                        remind:
+                          e.target.checked,
+                      })
+                    }
+                  />
+                  <span>
+                    Avisarme todos los días a
+                    esta hora si no la hice
+                    {!task.time &&
+                      ' (elegí un horario primero)'}
+                  </span>
+                </label>
+
                 <label className="target">
                   Objetivo semanal{' '}
                   <b>
@@ -4542,6 +4832,71 @@ const isDone = (id: string) =>
                   }))
                 }}
               />
+            )}
+
+            {sheet === 'focus' && (
+              <>
+                <span className="sheet-icon">
+                  <Timer />
+                </span>
+
+                <h2>Enfoque</h2>
+
+                {focusSession ? (
+                  <>
+                    <p className="focus-countdown">
+                      {String(
+                        Math.floor(
+                          focusRemainingMs / 60000
+                        )
+                      ).padStart(2, '0')}
+                      :
+                      {String(
+                        Math.floor(
+                          (focusRemainingMs % 60000) /
+                            1000
+                        )
+                      ).padStart(2, '0')}
+                    </p>
+
+                    <p>
+                      Si bloqueás el teléfono, te
+                      avisamos con una notificación
+                      cuando termine.
+                    </p>
+
+                    <button
+                      className="danger"
+                      onClick={() =>
+                        clearFocus(true)
+                      }
+                    >
+                      <X size={16} />
+                      Cancelar
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <p>
+                      Elegí cuánto tiempo querés
+                      concentrarte.
+                    </p>
+
+                    <div className="focus-presets">
+                      {[5, 15, 25, 45].map(m => (
+                        <button
+                          key={m}
+                          onClick={() =>
+                            startFocus(m)
+                          }
+                        >
+                          {m} min
+                        </button>
+                      ))}
+                    </div>
+                  </>
+                )}
+              </>
             )}
 
             {sheet === 'theme' && (

@@ -19,6 +19,13 @@ button,input,textarea,select{font:inherit}
 .intro h1{font-size:30px;line-height:1.06;letter-spacing:-1.5px;margin:0}
 .intro h1 b{color:var(--accent-text)}
 .tiny-action,.section-title button{margin-top:13px;border:0;background:transparent;padding:0;color:var(--accent-text);font-size:11px;font-weight:700;display:flex;gap:5px;align-items:center}
+.intro-actions{display:flex;gap:18px;flex-wrap:wrap}
+.week-tier{font-size:10px;color:var(--muted);margin-top:2px;display:block}
+.remind-toggle{display:flex;align-items:flex-start;gap:8px;font-size:11px;color:var(--muted);margin:14px 0 0}
+.remind-toggle input{margin-top:2px;flex:none}
+.focus-countdown{font:44px 'DM Mono',monospace;text-align:center;margin:18px 0 6px;letter-spacing:1px}
+.focus-presets{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-top:14px}
+.focus-presets button{border:1px solid var(--line);background:var(--card);color:var(--ink);border-radius:11px;padding:14px 4px;font-size:12px;font-weight:700}
 .level-card{min-height:151px;background:linear-gradient(135deg,var(--grad-1),var(--grad-2));color:#f6fbe9;border-radius:20px;padding:21px;display:flex;align-items:center;gap:15px;position:relative;overflow:hidden}
 .level-orb{width:58px;height:58px;border:4px solid var(--accent);border-radius:50%;display:grid;place-items:center;font-weight:800;font-size:21px}
 .level-card small{font:9px 'DM Mono';color:#c5d9a5}
