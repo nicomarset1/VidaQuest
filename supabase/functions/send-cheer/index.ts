@@ -57,7 +57,9 @@ Deno.serve(async req => {
   // realmente es parte.
   const { data: friendship } = await userClient
     .from('friendships')
-    .select('id, requester_id, addressee_id, status')
+    .select(
+      'id, requester_id, addressee_id, status, requester_nickname, addressee_nickname'
+    )
     .eq('id', friendshipId)
     .eq('status', 'accepted')
     .maybeSingle()
@@ -70,6 +72,14 @@ Deno.serve(async req => {
     friendship.requester_id === fromUser.id
       ? friendship.addressee_id
       : friendship.requester_id
+
+  // El apodo que el DESTINATARIO le puso al que manda el aliento (no
+  // el que el que manda le puso a él), guardado del lado que le
+  // corresponde según su rol en la fila.
+  const nicknameForSender =
+    toUserId === friendship.requester_id
+      ? friendship.requester_nickname
+      : friendship.addressee_nickname
 
   const today = new Date().toISOString().slice(0, 10)
   const kindPrefix = `cheer-from-${fromUser.id}`
@@ -91,7 +101,8 @@ Deno.serve(async req => {
     .select('*')
     .eq('user_id', toUserId)
 
-  const fromLabel = fromUser.email ?? 'Un amigo'
+  const fromLabel =
+    nicknameForSender || fromUser.email || 'Un amigo'
   let sentCount = 0
 
   for (const s of subs ?? []) {
