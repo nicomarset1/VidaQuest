@@ -94,6 +94,16 @@ const ago = (n: number) => {
   return localDateString(d)
 }
 
+const greeting = () => {
+  const h = new Date().getHours()
+
+  if (h < 6) return 'Buenas noches'
+  if (h < 12) return 'Buen día'
+  if (h < 20) return 'Buenas tardes'
+
+  return 'Buenas noches'
+}
+
 const fmtReminderDate = (date: string) => {
   if (!date) return ''
   if (date === iso()) return 'Hoy'
@@ -2138,11 +2148,7 @@ const isDone = (id: string) =>
                 ).format(new Date())}
               </p>
 
-              <h1>
-                Tu vida,
-                <br />
-                <b>tu aventura.</b>
-              </h1>
+              <h1>{greeting()}</h1>
 
               <button
                 onClick={() => {
