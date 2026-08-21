@@ -37,11 +37,11 @@ button,input,textarea,select{font:inherit}
 .section-title{display:flex;justify-content:space-between;align-items:end;margin:0 2px 12px}
 .section-title h2{font-size:18px;margin:0}
 .section-title button{margin:0}
-.missions{display:grid;gap:8px}
+.missions{display:grid;gap:8px;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
 .mission{display:flex;align-items:center;border:1px solid var(--line);background:var(--card);border-radius:14px;color:var(--ink);position:relative;transition:transform .18s ease}
 .mission.complete{background:var(--accent-soft)}
 .mission.dragging{box-shadow:0 8px 20px rgba(0,0,0,.18);border-color:var(--accent-text)}
-.drag-handle{border:0;background:transparent;color:var(--muted);padding:13px 0 13px 13px;display:flex;align-items:center;touch-action:none;cursor:grab;flex:none}
+.drag-handle{border:0;background:transparent;color:var(--muted);padding:13px 0 13px 13px;display:flex;align-items:center;touch-action:none;cursor:grab;flex:none;-webkit-tap-highlight-color:transparent}
 .mission.dragging .drag-handle{cursor:grabbing;color:var(--accent-text)}
 .task-main{flex:1;border:0;background:transparent;padding:13px;display:flex;align-items:center;gap:10px;text-align:left;color:inherit;min-width:0}
 .check{width:22px;height:22px;border-radius:7px;border:1.5px solid #ccd3c7;display:grid;place-items:center;flex:none}
