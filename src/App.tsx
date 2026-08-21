@@ -96,6 +96,7 @@ type FriendStats = {
   streak: number
   weekDone: number
   weekTarget: number
+  weekXP: number
 }
 
 const localDateString = (d: Date) => {
@@ -1202,6 +1203,15 @@ const isDone = (id: string) =>
       )
     : 0
 
+  const weekXP = store.completions
+    .filter(c => c.date >= weekStart)
+    .reduce((sum, c) => {
+      const t = store.tasks.find(
+        t => t.id === c.taskId
+      )
+      return sum + (t?.xp ?? 0)
+    }, 0)
+
   const areaBreakdown = useMemo(() => {
     const counts = new Map<string, number>()
 
@@ -1320,37 +1330,36 @@ const isDone = (id: string) =>
 
   const friendRanking = useMemo(() => {
     const rows = [
-      { key: 'me', label: 'Vos', pct: weeklyRate, isMe: true },
+      { key: 'me', label: 'Vos', xp: weekXP, isMe: true },
       ...acceptedFriends.map(f => {
         const otherId =
           f.requesterId === authUser?.id
             ? f.addresseeId
             : f.requesterId
         const stats = friendStats[otherId]
-        const pct =
-          stats && stats.weekTarget
-            ? Math.min(
-                100,
-                Math.round(
-                  (stats.weekDone / stats.weekTarget) * 100
-                )
-              )
-            : 0
+
         return {
           key: String(f.id),
           label:
             nicknameFor(f) ||
             friendEmails[otherId] ||
             'Cargando...',
-          pct,
+          xp: stats?.weekXP ?? 0,
           isMe: false,
         }
       }),
     ]
 
-    return rows.sort((a, b) => b.pct - a.pct)
+    const maxXP = Math.max(1, ...rows.map(r => r.xp))
+
+    return rows
+      .sort((a, b) => b.xp - a.xp)
+      .map(r => ({
+        ...r,
+        bar: Math.round((r.xp / maxXP) * 100),
+      }))
   }, [
-    weeklyRate,
+    weekXP,
     acceptedFriends,
     friendStats,
     friendEmails,
@@ -2507,6 +2516,7 @@ const isDone = (id: string) =>
           ),
           weekDone: row.week_done,
           weekTarget: row.week_target,
+          weekXP: row.week_xp,
         },
       }))
     }
@@ -3848,8 +3858,13 @@ const isDone = (id: string) =>
               <>
                 <Title
                   label="RANKING"
-                  title="Esta semana"
+                  title="XP ganado esta semana"
                 />
+
+                <p className="rank-note">
+                  Se ordena por XP para que sea parejo aunque
+                  tengan distinta cantidad de tareas.
+                </p>
 
                 <div className="rank-list">
                   {friendRanking.map((row, i) => (
@@ -3876,13 +3891,13 @@ const isDone = (id: string) =>
                       <div className="rank-bar">
                         <div
                           style={{
-                            width: `${row.pct}%`,
+                            width: `${row.bar}%`,
                           }}
                         />
                       </div>
 
                       <span className="rank-pct">
-                        {row.pct}%
+                        {row.xp} XP
                       </span>
                     </div>
                   ))}

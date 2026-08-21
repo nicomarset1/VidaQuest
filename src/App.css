@@ -225,6 +225,7 @@ button,input,textarea,select{font:inherit}
 .nickname-edit input{flex:1;min-width:0;border:1px solid var(--line);background:var(--paper);color:var(--ink);border-radius:8px;padding:5px 8px;font-size:12px}
 .nickname-edit button{border:0;background:var(--accent);color:var(--grad-1);width:26px;height:26px;border-radius:8px;display:grid;place-items:center;flex:none}
 .friend-cheer{width:100%;margin-top:10px;border:1px dashed var(--line);background:transparent;color:var(--ink);border-radius:11px;padding:9px;font-size:11px;font-weight:700}
+.rank-note{font-size:10px;color:var(--muted);margin:6px 0 0}
 .rank-list{display:grid;gap:7px;margin-top:14px}
 .rank-row{display:flex;align-items:center;gap:9px;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:9px 12px}
 .rank-row.me{border-color:var(--accent-text);background:var(--accent-soft);color:var(--grad-1)}
@@ -232,7 +233,7 @@ button,input,textarea,select{font:inherit}
 .rank-label{width:88px;flex:none;font-size:11px;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .rank-bar{flex:1;height:7px;border-radius:99px;background:var(--track);overflow:hidden}
 .rank-bar div{height:100%;background:var(--accent-text);border-radius:99px}
-.rank-pct{width:34px;flex:none;text-align:right;font-size:11px;font-weight:800;color:var(--accent-text)}
+.rank-pct{width:52px;flex:none;text-align:right;font-size:11px;font-weight:800;color:var(--accent-text)}
 .cal-list{display:grid;gap:7px;margin-bottom:10px}
 .cal-item{display:flex;align-items:center;gap:8px;border:1px solid var(--line);background:var(--card);border-radius:11px;padding:10px 12px;font-size:11px;color:var(--ink)}
 .cal-item span{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
