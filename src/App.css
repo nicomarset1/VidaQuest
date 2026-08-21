@@ -14,7 +14,6 @@ button,input,textarea,select{font:inherit}
 .bell,.plain-icon{border:0;background:var(--card);width:39px;height:39px;border-radius:12px;color:var(--ink);display:grid;place-items:center;position:relative}
 .bell.linked{color:var(--accent-text)}
 .notif-dot{position:absolute;top:-3px;right:-3px;min-width:16px;height:16px;padding:0 3px;border-radius:999px;background:#e5484d;color:#fff;font-size:9px;font-weight:700;display:grid;place-items:center;line-height:1}
-.menu-row-icon{position:relative;flex:0 0 auto!important;display:flex;align-items:center;justify-content:center}
 .intro{padding:20px 2px 18px}
 .intro p,.section-title p,.status p,.chart-card>p{font:10px 'DM Mono',monospace;letter-spacing:1px;text-transform:uppercase;color:var(--muted);margin:0 0 7px}
 .intro h1{font-size:30px;line-height:1.06;letter-spacing:-1.5px;margin:0}

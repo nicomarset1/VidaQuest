@@ -2673,6 +2673,21 @@ const isDone = (id: string) =>
             <Palette size={19} />
           </button>
 
+          {authUser && (
+            <button
+              className="plain-icon"
+              onClick={() => setView('friends')}
+              aria-label="Amigos"
+            >
+              <Users size={19} />
+              {incomingFriendRequests.length > 0 && (
+                <span className="notif-dot">
+                  {incomingFriendRequests.length}
+                </span>
+              )}
+            </button>
+          )}
+
           <button
             className={`bell ${authUser ? 'linked' : ''}`}
             onClick={() =>
@@ -2681,11 +2696,6 @@ const isDone = (id: string) =>
             aria-label="Cuenta"
           >
             <CircleUserRound size={20} />
-            {incomingFriendRequests.length > 0 && (
-              <span className="notif-dot">
-                {incomingFriendRequests.length}
-              </span>
-            )}
           </button>
         </div>
       </header>
@@ -4436,50 +4446,6 @@ const isDone = (id: string) =>
                     </small>
                   </span>
                 </button>
-
-                {authUser && (
-                  <button
-                    className="menu-row"
-                    onClick={() => {
-                      setSheet(null)
-                      setView('friends')
-                    }}
-                  >
-                    <span className="menu-row-icon">
-                      <Users />
-                      {incomingFriendRequests.length > 0 && (
-                        <span className="notif-dot">
-                          {incomingFriendRequests.length}
-                        </span>
-                      )}
-                    </span>
-
-                    <span>
-                      <b>Amigos</b>
-
-                      <small>
-                        {acceptedFriends.length}{' '}
-                        conectado
-                        {acceptedFriends.length === 1
-                          ? ''
-                          : 's'}
-                        {incomingFriendRequests.length >
-                          0 &&
-                          ` · ${incomingFriendRequests.length} solicitud${
-                            incomingFriendRequests.length ===
-                            1
-                              ? ''
-                              : 'es'
-                          } nueva${
-                            incomingFriendRequests.length ===
-                            1
-                              ? ''
-                              : 's'
-                          }`}
-                      </small>
-                    </span>
-                  </button>
-                )}
 
                 {authUser && (
                   <button
