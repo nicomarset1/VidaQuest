@@ -342,11 +342,14 @@ const ACHIEVEMENTS = [
  * a una línea al pasar de perfil.
  */
 const SHIELD_POLY = [
-  [4, 2],
-  [96, 2],
-  [96, 44],
-  [50, 98],
-  [4, 44],
+  [50, 2],
+  [85, 13],
+  [100, 38],
+  [92, 68],
+  [50, 100],
+  [8, 68],
+  [0, 38],
+  [15, 13],
 ] as const
 
 // Se usa como clip-path tanto en la grilla como en el detalle, para que
