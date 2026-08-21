@@ -86,6 +86,8 @@ type Friendship = {
   requesterId: string
   addresseeId: string
   status: 'pending' | 'accepted'
+  requesterNickname: string | null
+  addresseeNickname: string | null
 }
 
 type FriendStats = {
@@ -606,6 +608,12 @@ export default function App() {
   const [friendSearch, setFriendSearch] = useState('')
 
   const [friendLoading, setFriendLoading] = useState(false)
+
+  const [editingNicknameId, setEditingNicknameId] = useState<
+    number | null
+  >(null)
+
+  const [nicknameDraft, setNicknameDraft] = useState('')
 
   const [task, setTask] = useState<{
     id: string | null
@@ -1304,6 +1312,50 @@ const isDone = (id: string) =>
       authUser &&
       f.requesterId === authUser.id
   )
+
+  const nicknameFor = (f: Friendship) =>
+    (f.requesterId === authUser?.id
+      ? f.requesterNickname
+      : f.addresseeNickname) || null
+
+  const friendRanking = useMemo(() => {
+    const rows = [
+      { key: 'me', label: 'Vos', pct: weeklyRate, isMe: true },
+      ...acceptedFriends.map(f => {
+        const otherId =
+          f.requesterId === authUser?.id
+            ? f.addresseeId
+            : f.requesterId
+        const stats = friendStats[otherId]
+        const pct =
+          stats && stats.weekTarget
+            ? Math.min(
+                100,
+                Math.round(
+                  (stats.weekDone / stats.weekTarget) * 100
+                )
+              )
+            : 0
+        return {
+          key: String(f.id),
+          label:
+            nicknameFor(f) ||
+            friendEmails[otherId] ||
+            'Cargando...',
+          pct,
+          isMe: false,
+        }
+      }),
+    ]
+
+    return rows.sort((a, b) => b.pct - a.pct)
+  }, [
+    weeklyRate,
+    acceptedFriends,
+    friendStats,
+    friendEmails,
+    authUser,
+  ])
 
   const achievementStats: AchievementStats = {
     level,
@@ -2394,6 +2446,8 @@ const isDone = (id: string) =>
         requesterId: f.requester_id,
         addresseeId: f.addressee_id,
         status: f.status,
+        requesterNickname: f.requester_nickname,
+        addresseeNickname: f.addressee_nickname,
       })
     )
 
@@ -2624,6 +2678,68 @@ const isDone = (id: string) =>
     setFriendSearch('')
     toastMsg('Solicitud enviada')
     await loadFriendships()
+  }
+
+  const saveFriendNickname = async (
+    f: Friendship,
+    nickname: string
+  ) => {
+    if (!supabase) return
+
+    const { error } = await supabase.rpc(
+      'set_friend_nickname',
+      { friendship_id: f.id, nickname }
+    )
+
+    if (error) {
+      toastMsg('No se pudo guardar el apodo', 'error')
+      return
+    }
+
+    const clean = nickname.trim() || null
+
+    setFriendships(prev =>
+      prev.map(row =>
+        row.id === f.id
+          ? row.requesterId === authUser?.id
+            ? { ...row, requesterNickname: clean }
+            : { ...row, addresseeNickname: clean }
+          : row
+      )
+    )
+
+    setEditingNicknameId(null)
+    toastMsg('Apodo guardado')
+  }
+
+  const sendCheer = async (f: Friendship) => {
+    if (!supabase) return
+
+    const { data, error } = await supabase.functions.invoke(
+      'send-cheer',
+      { body: { friendshipId: f.id } }
+    )
+
+    if (error) {
+      toastMsg('No se pudo mandar el aliento', 'error')
+      return
+    }
+
+    if (!data?.ok) {
+      toastMsg(
+        data?.reason === 'cooldown'
+          ? 'Ya le mandaste ánimo hoy'
+          : 'No se pudo mandar el aliento',
+        'info'
+      )
+      return
+    }
+
+    toastMsg(
+      data.sentTo > 0
+        ? '¡Aliento enviado! 🔥'
+        : 'Tu amigo no tiene notificaciones activadas'
+    )
   }
 
   useEffect(() => {
@@ -3728,6 +3844,52 @@ const isDone = (id: string) =>
               </>
             )}
 
+            {acceptedFriends.length > 0 && (
+              <>
+                <Title
+                  label="RANKING"
+                  title="Esta semana"
+                />
+
+                <div className="rank-list">
+                  {friendRanking.map((row, i) => (
+                    <div
+                      className={`rank-row ${
+                        row.isMe ? 'me' : ''
+                      }`}
+                      key={row.key}
+                    >
+                      <span className="rank-pos">
+                        {i === 0
+                          ? '🥇'
+                          : i === 1
+                            ? '🥈'
+                            : i === 2
+                              ? '🥉'
+                              : i + 1}
+                      </span>
+
+                      <span className="rank-label">
+                        {row.label}
+                      </span>
+
+                      <div className="rank-bar">
+                        <div
+                          style={{
+                            width: `${row.pct}%`,
+                          }}
+                        />
+                      </div>
+
+                      <span className="rank-pct">
+                        {row.pct}%
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </>
+            )}
+
             <Title
               label="TUS AMIGOS"
               title={`${
@@ -3786,10 +3948,81 @@ const isDone = (id: string) =>
                         </span>
 
                         <div className="friend-row-info">
-                          <b>
-                            {email ||
-                              'Cargando...'}
-                          </b>
+                          {editingNicknameId ===
+                          f.id ? (
+                            <div className="nickname-edit">
+                              <input
+                                autoFocus
+                                placeholder={
+                                  email ||
+                                  'Apodo'
+                                }
+                                value={
+                                  nicknameDraft
+                                }
+                                onChange={e =>
+                                  setNicknameDraft(
+                                    e.target
+                                      .value
+                                  )
+                                }
+                                onKeyDown={e => {
+                                  if (
+                                    e.key ===
+                                    'Enter'
+                                  )
+                                    saveFriendNickname(
+                                      f,
+                                      nicknameDraft
+                                    )
+                                  if (
+                                    e.key ===
+                                    'Escape'
+                                  )
+                                    setEditingNicknameId(
+                                      null
+                                    )
+                                }}
+                              />
+                              <button
+                                aria-label="Guardar apodo"
+                                onClick={() =>
+                                  saveFriendNickname(
+                                    f,
+                                    nicknameDraft
+                                  )
+                                }
+                              >
+                                <Check
+                                  size={14}
+                                />
+                              </button>
+                            </div>
+                          ) : (
+                            <b>
+                              {nicknameFor(f) ||
+                                email ||
+                                'Cargando...'}
+                              <button
+                                className="nickname-pencil"
+                                aria-label="Ponerle apodo"
+                                onClick={() => {
+                                  setNicknameDraft(
+                                    nicknameFor(
+                                      f
+                                    ) || ''
+                                  )
+                                  setEditingNicknameId(
+                                    f.id
+                                  )
+                                }}
+                              >
+                                <Pencil
+                                  size={11}
+                                />
+                              </button>
+                            </b>
+                          )}
 
                           {stats ? (
                             <small>
@@ -3844,6 +4077,15 @@ const isDone = (id: string) =>
                           </div>
                         </div>
                       )}
+
+                      <button
+                        className="friend-cheer"
+                        onClick={() =>
+                          sendCheer(f)
+                        }
+                      >
+                        🔥 Mandar aliento
+                      </button>
                     </div>
                   )
                 })}
