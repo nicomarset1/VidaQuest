@@ -407,6 +407,54 @@ export default function App() {
     action: () => void
   } | null>(null)
 
+  const [statOverlay, setStatOverlay] = useState<{
+    key:
+      | 'xp'
+      | 'streak'
+      | 'bestStreak'
+      | 'completions'
+      | 'avg'
+      | 'weekly'
+    closing: boolean
+  } | null>(null)
+
+  const [dayOverlay, setDayOverlay] = useState<{
+    date: string
+    closing: boolean
+    dir: 'in' | 'next' | 'prev'
+  } | null>(null)
+
+  const openStat = (key: NonNullable<typeof statOverlay>['key']) =>
+    setStatOverlay({ key, closing: false })
+
+  const closeStat = () => {
+    setStatOverlay(o => (o ? { ...o, closing: true } : null))
+    setTimeout(() => setStatOverlay(null), 200)
+  }
+
+  const openDay = (date: string) =>
+    setDayOverlay({ date, closing: false, dir: 'in' })
+
+  const closeDay = () => {
+    setDayOverlay(o => (o ? { ...o, closing: true } : null))
+    setTimeout(() => setDayOverlay(null), 200)
+  }
+
+  const gotoDay = (offset: number) => {
+    setDayOverlay(o => {
+      if (!o) return o
+
+      const d = new Date(`${o.date}T12:00`)
+      d.setDate(d.getDate() + offset)
+
+      return {
+        date: localDateString(d),
+        closing: false,
+        dir: offset > 0 ? 'next' : 'prev',
+      }
+    })
+  }
+
   const [pushStatus, setPushStatus] = useState<
     'unsupported' | 'needs-install' | 'off' | 'on' | 'loading'
   >('off')
@@ -814,13 +862,16 @@ const isDone = (id: string) =>
     return n
   }, [store.completions])
 
-  const bestStreak = useMemo(() => {
+  const bestStreakInfo = useMemo(() => {
     const days = Array.from(
       new Set(store.completions.map(c => c.date))
     ).sort()
 
     let best = 0
+    let bestStart = ''
+    let bestEnd = ''
     let run = 0
+    let runStart = ''
     let prev: string | null = null
 
     for (const d of days) {
@@ -830,13 +881,71 @@ const isDone = (id: string) =>
           86400000
         : 1
 
-      run = diff === 1 ? run + 1 : 1
-      best = Math.max(best, run)
+      if (diff === 1) {
+        run += 1
+      } else {
+        run = 1
+        runStart = d
+      }
+
+      if (run > best) {
+        best = run
+        bestStart = runStart
+        bestEnd = d
+      }
+
       prev = d
     }
 
-    return best
+    return { length: best, start: bestStart, end: bestEnd }
   }, [store.completions])
+
+  const bestStreak = bestStreakInfo.length
+
+  const last7Days = useMemo(
+    () =>
+      Array.from({ length: 7 }, (_, i) => {
+        const date = ago(6 - i)
+
+        return {
+          date,
+          count: store.completions.filter(
+            c => c.date === date
+          ).length,
+        }
+      }),
+    [store.completions]
+  )
+
+  const taskBreakdown = useMemo(() => {
+    const counts = new Map<string, number>()
+
+    for (const c of store.completions) {
+      counts.set(
+        c.taskId,
+        (counts.get(c.taskId) || 0) + 1
+      )
+    }
+
+    const max = Math.max(1, ...counts.values())
+
+    return [...counts.entries()]
+      .map(([taskId, count]) => ({
+        task: store.tasks.find(
+          t => t.id === taskId
+        ),
+        count,
+        pct: Math.round((count / max) * 100),
+      }))
+      .filter(
+        (x): x is {
+          task: Task
+          count: number
+          pct: number
+        } => Boolean(x.task)
+      )
+      .sort((a, b) => b.count - a.count)
+  }, [store.completions, store.tasks])
 
   const avgPerDay =
     store.completions.filter(c => c.date >= weekStart)
@@ -937,6 +1046,19 @@ const isDone = (id: string) =>
     .filter(c => c.date === selectedDay)
     .map(c => store.tasks.find(t => t.id === c.taskId))
     .filter((t): t is Task => Boolean(t))
+
+  const dayOverlayReminders = dayOverlay
+    ? remindersByDate.get(dayOverlay.date) || []
+    : []
+
+  const dayOverlayTasks = dayOverlay
+    ? store.completions
+        .filter(c => c.date === dayOverlay.date)
+        .map(c =>
+          store.tasks.find(t => t.id === c.taskId)
+        )
+        .filter((t): t is Task => Boolean(t))
+    : []
 
   const toastMsg = (
     text: string,
@@ -2293,18 +2415,23 @@ const isDone = (id: string) =>
                 label="XP acumulado"
                 value={String(totalXP)}
                 icon="✦"
+                onClick={() => openStat('xp')}
               />
 
               <Stat
                 label="Racha actual"
                 value={`${streak} días`}
                 icon="🔥"
+                onClick={() => openStat('streak')}
               />
 
               <Stat
                 label="Racha récord"
                 value={`${bestStreak} días`}
                 icon="🏆"
+                onClick={() =>
+                  openStat('bestStreak')
+                }
               />
 
               <Stat
@@ -2313,18 +2440,25 @@ const isDone = (id: string) =>
                   store.completions.length
                 )}
                 icon="✓"
+                onClick={() =>
+                  openStat('completions')
+                }
               />
 
               <Stat
                 label="Promedio diario"
                 value={avgPerDay.toFixed(1)}
                 icon="📊"
+                onClick={() => openStat('avg')}
               />
 
               <Stat
                 label="Cumplimiento semanal"
                 value={`${weeklyRate}%`}
                 icon="🎯"
+                onClick={() =>
+                  openStat('weekly')
+                }
               />
             </section>
 
@@ -2338,60 +2472,39 @@ const isDone = (id: string) =>
               </h2>
 
               <div className="bar-chart">
-                {Array.from(
-                  { length: 7 },
-                  (_, i) =>
-                    ago(6 - i)
-                ).map(
-                  (date, i) => {
-                    const n =
-                      store.completions.filter(
-                        c =>
-                          c.date === date
-                      ).length
+                {last7Days.map(({ date, count: n }, i) => (
+                  <div key={date}>
+                    <span
+                      style={{
+                        height: `${Math.max(
+                          n
+                            ? (n /
+                                Math.max(
+                                  store.tasks
+                                    .length,
+                                  1
+                                )) *
+                                100
+                            : 6,
+                          6
+                        )}%`,
+                      }}
+                    />
 
-                    return (
-                      <div
-                        key={date}
-                      >
-                        <span
-                          style={{
-                            height: `${
-                              Math.max(
-                                n
-                                  ? (n /
-                                      Math.max(
-                                        store.tasks
-                                          .length,
-                                        1
-                                      )) *
-                                      100
-                                  : 6,
-                                6
-                              )
-                            }%`,
-                          }}
-                        />
-
-                        <small>
-                          {i === 6
-                            ? 'Hoy'
-                            : new Intl.DateTimeFormat(
-                                'es',
-                                {
-                                  weekday:
-                                    'narrow',
-                                }
-                              ).format(
-                                new Date(
-                                  `${date}T12:00`
-                                )
-                              )}
-                        </small>
-                      </div>
-                    )
-                  }
-                )}
+                    <small>
+                      {i === 6
+                        ? 'Hoy'
+                        : new Intl.DateTimeFormat(
+                            'es',
+                            { weekday: 'narrow' }
+                          ).format(
+                            new Date(
+                              `${date}T12:00`
+                            )
+                          )}
+                    </small>
+                  </div>
+                ))}
               </div>
             </section>
 
@@ -2406,9 +2519,14 @@ const isDone = (id: string) =>
 
               <div className="heatmap">
                 {heatmap.map(({ date, count }) => (
-                  <span
+                  <button
                     key={date}
                     className="heat-cell"
+                    aria-label={`${fmtDayLabel(
+                      date
+                    )} · ${count} tarea${
+                      count === 1 ? '' : 's'
+                    }`}
                     title={`${fmtReminderDate(
                       date
                     )} · ${count} tarea${
@@ -2431,6 +2549,9 @@ const isDone = (id: string) =>
                           )
                         : 1,
                     }}
+                    onClick={() =>
+                      openDay(date)
+                    }
                   />
                 ))}
               </div>
@@ -3738,6 +3859,461 @@ const isDone = (id: string) =>
         </div>
       )}
 
+      {statOverlay && (
+        <div
+          className={`stat-overlay ${
+            statOverlay.closing ? 'closing' : ''
+          }`}
+          onClick={closeStat}
+        >
+          <div
+            className="stat-detail-card"
+            onClick={e => e.stopPropagation()}
+          >
+            <button
+              className="stat-detail-close"
+              aria-label="Minimizar"
+              onClick={closeStat}
+            >
+              <X size={18} />
+            </button>
+
+            {statOverlay.key === 'xp' && (
+              <>
+                <span className="sheet-icon">
+                  <Sparkles />
+                </span>
+
+                <h2>XP acumulado</h2>
+
+                <p className="stat-big">
+                  {totalXP}
+                  <small>XP total</small>
+                </p>
+
+                <p className="stat-sub">
+                  Nivel {level} · {xpIntoLevel}/
+                  {xpForNext} XP para el
+                  próximo nivel
+                </p>
+
+                <div className="weekly-line">
+                  <span
+                    style={{
+                      width: `${
+                        (xpIntoLevel /
+                          xpForNext) *
+                        100
+                      }%`,
+                    }}
+                  />
+                </div>
+
+                <Title
+                  label="POR ÁREA"
+                  title="Dónde generás más XP"
+                />
+
+                {areaBreakdown.length ? (
+                  <div className="area-breakdown">
+                    {areaBreakdown.map(a => (
+                      <div
+                        className="area-row"
+                        key={a.area}
+                      >
+                        <span>{a.area}</span>
+
+                        <div className="area-line">
+                          <i
+                            style={{
+                              width: `${a.pct}%`,
+                            }}
+                          />
+                        </div>
+
+                        <b>{a.count}</b>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <Empty text="Todavía no hay actividad para desglosar." />
+                )}
+              </>
+            )}
+
+            {statOverlay.key === 'streak' && (
+              <>
+                <span className="sheet-icon">
+                  <Flame />
+                </span>
+
+                <h2>Racha actual</h2>
+
+                <p className="stat-big">
+                  {streak}
+                  <small>
+                    {streak === 1
+                      ? 'día seguido'
+                      : 'días seguidos'}
+                  </small>
+                </p>
+
+                <p className="stat-sub">
+                  {streak > 0
+                    ? 'Completá algo hoy para no cortarla.'
+                    : 'Completá una tarea hoy para arrancar una racha.'}
+                </p>
+
+                <Title
+                  label="ÚLTIMOS 14 DÍAS"
+                  title="Actividad reciente"
+                />
+
+                <div className="mini-heat">
+                  {heatmap.slice(-14).map(
+                    ({ date, count }) => (
+                      <span
+                        key={date}
+                        className="mini-heat-cell"
+                        title={fmtDayLabel(
+                          date
+                        )}
+                        style={{
+                          background: count
+                            ? 'var(--accent)'
+                            : 'var(--line)',
+                        }}
+                      />
+                    )
+                  )}
+                </div>
+              </>
+            )}
+
+            {statOverlay.key ===
+              'bestStreak' && (
+              <>
+                <span className="sheet-icon">
+                  <Trophy />
+                </span>
+
+                <h2>Racha récord</h2>
+
+                <p className="stat-big">
+                  {bestStreak}
+                  <small>
+                    {bestStreak === 1
+                      ? 'día'
+                      : 'días'}
+                  </small>
+                </p>
+
+                <p className="stat-sub">
+                  {bestStreakInfo.length > 0
+                    ? `Del ${fmtReminderDate(
+                        bestStreakInfo.start
+                      )} al ${fmtReminderDate(
+                        bestStreakInfo.end
+                      )}.`
+                    : 'Todavía no arrancaste una racha.'}
+                </p>
+              </>
+            )}
+
+            {statOverlay.key ===
+              'completions' && (
+              <>
+                <span className="sheet-icon">
+                  <Check />
+                </span>
+
+                <h2>Tareas hechas</h2>
+
+                <p className="stat-big">
+                  {store.completions.length}
+                  <small>en total</small>
+                </p>
+
+                <Title
+                  label="POR TAREA"
+                  title="Tus más constantes"
+                />
+
+                {taskBreakdown.length ? (
+                  <div className="area-breakdown">
+                    {taskBreakdown.map(t => (
+                      <div
+                        className="area-row"
+                        key={t.task.id}
+                      >
+                        <span>
+                          {t.task.title}
+                        </span>
+
+                        <div className="area-line">
+                          <i
+                            style={{
+                              width: `${t.pct}%`,
+                            }}
+                          />
+                        </div>
+
+                        <b>{t.count}</b>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <Empty text="Todavía no completaste ninguna tarea." />
+                )}
+              </>
+            )}
+
+            {statOverlay.key === 'avg' && (
+              <>
+                <span className="sheet-icon">
+                  <Sparkles />
+                </span>
+
+                <h2>Promedio diario</h2>
+
+                <p className="stat-big">
+                  {avgPerDay.toFixed(1)}
+                  <small>tareas/día</small>
+                </p>
+
+                <p className="stat-sub">
+                  Promedio de los últimos 7
+                  días.
+                </p>
+
+                <div className="bar-chart">
+                  {last7Days.map(
+                    (
+                      { date, count: n },
+                      i
+                    ) => (
+                      <div key={date}>
+                        <span
+                          style={{
+                            height: `${Math.max(
+                              n
+                                ? (n /
+                                    Math.max(
+                                      store.tasks
+                                        .length,
+                                      1
+                                    )) *
+                                    100
+                                : 6,
+                              6
+                            )}%`,
+                          }}
+                        />
+
+                        <small>
+                          {i === 6
+                            ? 'Hoy'
+                            : new Intl.DateTimeFormat(
+                                'es',
+                                {
+                                  weekday:
+                                    'narrow',
+                                }
+                              ).format(
+                                new Date(
+                                  `${date}T12:00`
+                                )
+                              )}
+                        </small>
+                      </div>
+                    )
+                  )}
+                </div>
+              </>
+            )}
+
+            {statOverlay.key === 'weekly' && (
+              <>
+                <span className="sheet-icon">
+                  <Target />
+                </span>
+
+                <h2>
+                  Cumplimiento semanal
+                </h2>
+
+                <p className="stat-big">
+                  {weeklyRate}%
+                  <small>
+                    de tus objetivos
+                  </small>
+                </p>
+
+                <Title
+                  label="POR TAREA"
+                  title="Cómo vas esta semana"
+                />
+
+                {store.tasks.length ? (
+                  <div className="area-breakdown">
+                    {store.tasks.map(t => {
+                      const n = countWeek(
+                        t.id
+                      )
+
+                      return (
+                        <div
+                          className="area-row"
+                          key={t.id}
+                        >
+                          <span>
+                            {t.title}
+                          </span>
+
+                          <div className="area-line">
+                            <i
+                              style={{
+                                width: `${Math.min(
+                                  100,
+                                  (n /
+                                    t.weeklyTarget) *
+                                    100
+                                )}%`,
+                              }}
+                            />
+                          </div>
+
+                          <b>
+                            {n}/
+                            {t.weeklyTarget}
+                          </b>
+                        </div>
+                      )
+                    })}
+                  </div>
+                ) : (
+                  <Empty text="Todavía no tenés tareas." />
+                )}
+              </>
+            )}
+          </div>
+        </div>
+      )}
+
+      {dayOverlay && (
+        <div
+          className={`stat-overlay ${
+            dayOverlay.closing ? 'closing' : ''
+          }`}
+          onClick={closeDay}
+        >
+          <div
+            className="stat-detail-card day-detail-card"
+            onClick={e => e.stopPropagation()}
+          >
+            <button
+              className="stat-detail-close"
+              aria-label="Minimizar"
+              onClick={closeDay}
+            >
+              <X size={18} />
+            </button>
+
+            <div className="day-nav-row">
+              <button
+                className="day-nav-btn"
+                aria-label="Día anterior"
+                onClick={() => gotoDay(-1)}
+              >
+                <ChevronLeft size={18} />
+              </button>
+
+              <div
+                key={dayOverlay.date}
+                className={`day-detail-inner ${
+                  dayOverlay.dir === 'next'
+                    ? 'slide-from-right'
+                    : dayOverlay.dir === 'prev'
+                      ? 'slide-from-left'
+                      : ''
+                }`}
+              >
+                <span className="sheet-icon">
+                  <CalendarDays />
+                </span>
+
+                <h2>
+                  {fmtDayLabel(dayOverlay.date)}
+                </h2>
+
+                {dayOverlayTasks.length ===
+                  0 &&
+                dayOverlayReminders.length ===
+                  0 ? (
+                  <Empty text="No hay actividad registrada este día." />
+                ) : (
+                  <>
+                    {dayOverlayTasks.length >
+                      0 && (
+                      <div className="cal-list">
+                        {dayOverlayTasks.map(
+                          (t, i) => (
+                            <div
+                              className="cal-item done"
+                              key={`${t.id}-${i}`}
+                            >
+                              <Check
+                                size={14}
+                              />
+                              <span>
+                                {t.title}
+                              </span>
+                              <em>
+                                +{t.xp} XP
+                              </em>
+                            </div>
+                          )
+                        )}
+                      </div>
+                    )}
+
+                    {dayOverlayReminders.length >
+                      0 && (
+                      <div className="cal-list">
+                        {dayOverlayReminders.map(
+                          r => (
+                            <div
+                              className="cal-item"
+                              key={r.id}
+                            >
+                              <Bell
+                                size={14}
+                              />
+                              <span>
+                                {r.title}
+                              </span>
+                              <b>{r.time}</b>
+                            </div>
+                          )
+                        )}
+                      </div>
+                    )}
+                  </>
+                )}
+              </div>
+
+              <button
+                className="day-nav-btn"
+                aria-label="Día siguiente"
+                onClick={() => gotoDay(1)}
+              >
+                <ChevronRight size={18} />
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {levelUp !== null && (
         <div
           className="levelup-overlay"
@@ -4048,17 +4624,19 @@ function Stat({
   label,
   value,
   icon,
+  onClick,
 }: {
   label: string
   value: string
   icon: string
+  onClick?: () => void
 }) {
   return (
-    <div className="stat">
+    <button className="stat" onClick={onClick}>
       <span>{icon}</span>
       <p>{label}</p>
       <b>{value}</b>
-    </div>
+    </button>
   )
 }
 

@@ -60,7 +60,8 @@ button,input,textarea,select{font:inherit}
 .page-head button{width:37px;height:37px;border:0;background:var(--card);border-radius:11px;color:var(--ink);display:grid;place-items:center}
 .filter{font-size:10px;color:var(--muted);background:var(--card);border:1px solid var(--line);border-radius:8px;padding:9px}
 .stat-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
-.stat{border-radius:14px;padding:13px}
+.stat{border-radius:14px;padding:13px;width:100%;text-align:left;font:inherit;color:inherit;cursor:pointer;transition:transform .15s}
+.stat:active{transform:scale(.95)}
 .stat p{font-size:9px;color:var(--muted);margin:10px 0 4px}
 .stat b{font-size:15px}
 .chart-card{border-radius:16px;padding:17px;margin-top:13px}
@@ -70,7 +71,8 @@ button,input,textarea,select{font:inherit}
 .bar-chart span{display:block;width:100%;max-width:23px;border-radius:6px 6px 1px 1px;background:var(--accent)}
 .bar-chart small{font:9px 'DM Mono';color:var(--muted)}
 .heatmap{display:grid;grid-template-columns:repeat(7,1fr);gap:5px;margin-top:14px}
-.heat-cell{display:block;width:100%;padding-top:100%;border-radius:4px}
+.heat-cell{display:block;width:100%;padding-top:100%;border-radius:4px;border:0;cursor:pointer;transition:transform .15s}
+.heat-cell:active{transform:scale(.85)}
 .heatmap-legend{display:flex;align-items:center;gap:4px;margin-top:10px;font-size:9px;color:var(--muted)}
 .heatmap-legend i{width:10px;height:10px;border-radius:3px;display:inline-block}
 .area-breakdown{display:grid;gap:10px;margin-top:14px}
@@ -213,6 +215,28 @@ button,input,textarea,select{font:inherit}
 @keyframes levelup-pop{0%{transform:scale(0) rotate(-12deg);opacity:0}60%{transform:scale(1.14) rotate(3deg);opacity:1}100%{transform:scale(1) rotate(0)}}
 @keyframes levelup-slide-in{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
 @keyframes levelup-particle-fly{0%{transform:translate(-50%,-50%) scale(.4);opacity:0}15%{opacity:1}100%{transform:translate(calc(-50% + var(--tx)),calc(-50% + var(--ty))) scale(1);opacity:0}}
+.stat-overlay{position:fixed;inset:0;z-index:40;display:flex;align-items:center;justify-content:center;padding:20px;background:rgba(6,10,6,.55);backdrop-filter:blur(3px);-webkit-backdrop-filter:blur(3px);animation:overlay-fade .2s ease both}
+.stat-overlay.closing{animation:overlay-fade-out .18s ease both}
+.stat-detail-card{width:100%;max-width:420px;max-height:82vh;overflow-y:auto;background:var(--card);border-radius:22px;padding:24px 20px;position:relative;animation:card-pop .28s cubic-bezier(.34,1.56,.64,1) both}
+.stat-overlay.closing .stat-detail-card{animation:card-pop-out .18s ease both}
+.stat-detail-close{position:absolute;top:14px;right:14px;width:32px;height:32px;border:0;border-radius:10px;background:var(--paper);color:var(--ink);display:grid;place-items:center;z-index:1}
+.stat-big{display:flex;align-items:baseline;gap:7px;font-size:34px;font-weight:800;letter-spacing:-1px;margin:14px 0 4px}
+.stat-big small{font:10px 'DM Mono',monospace;text-transform:uppercase;letter-spacing:1px;color:var(--muted);font-weight:600}
+.stat-sub{font-size:11px;color:var(--muted);margin:0 0 14px}
+.mini-heat{display:flex;gap:5px;margin-top:12px}
+.mini-heat-cell{flex:1;aspect-ratio:1;border-radius:5px;display:block}
+.day-nav-row{display:flex;align-items:stretch;gap:8px}
+.day-nav-btn{width:34px;height:34px;border:0;border-radius:10px;background:var(--paper);color:var(--ink);display:grid;place-items:center;flex:none;align-self:center}
+.day-detail-inner{flex:1;min-width:0;animation:day-fade-in .22s ease both}
+.day-detail-inner.slide-from-right{animation:day-slide-from-right .25s ease both}
+.day-detail-inner.slide-from-left{animation:day-slide-from-left .25s ease both}
+@keyframes overlay-fade{from{opacity:0}to{opacity:1}}
+@keyframes overlay-fade-out{from{opacity:1}to{opacity:0}}
+@keyframes card-pop{from{opacity:0;transform:scale(.88) translateY(10px)}to{opacity:1;transform:scale(1) translateY(0)}}
+@keyframes card-pop-out{from{opacity:1;transform:scale(1)}to{opacity:0;transform:scale(.92)}}
+@keyframes day-fade-in{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
+@keyframes day-slide-from-right{from{opacity:0;transform:translateX(28px)}to{opacity:1;transform:translateX(0)}}
+@keyframes day-slide-from-left{from{opacity:0;transform:translateX(-28px)}to{opacity:1;transform:translateX(0)}}
 @keyframes float{50%{transform:translateY(-5px)}}
 @keyframes slide{from{opacity:0;transform:translateX(10px)}to{opacity:1}}
 @keyframes up{from{transform:translateY(100%)}to{transform:translateY(0)}}
