@@ -11,8 +11,10 @@ button,input,textarea,select{font:inherit}
 .brand{font-size:19px;font-weight:800;letter-spacing:-1px;display:flex;align-items:center;gap:7px}
 .brand span{width:29px;height:29px;border-radius:9px;background:var(--ink);color:var(--accent);display:grid;place-items:center}
 .top-buttons{display:flex;gap:7px}
-.bell,.plain-icon{border:0;background:var(--card);width:39px;height:39px;border-radius:12px;color:var(--ink);display:grid;place-items:center}
+.bell,.plain-icon{border:0;background:var(--card);width:39px;height:39px;border-radius:12px;color:var(--ink);display:grid;place-items:center;position:relative}
 .bell.linked{color:var(--accent-text)}
+.notif-dot{position:absolute;top:-3px;right:-3px;min-width:16px;height:16px;padding:0 3px;border-radius:999px;background:#e5484d;color:#fff;font-size:9px;font-weight:700;display:grid;place-items:center;line-height:1}
+.menu-row-icon{position:relative;flex:0 0 auto!important;display:flex;align-items:center;justify-content:center}
 .intro{padding:20px 2px 18px}
 .intro p,.section-title p,.status p,.chart-card>p{font:10px 'DM Mono',monospace;letter-spacing:1px;text-transform:uppercase;color:var(--muted);margin:0 0 7px}
 .intro h1{font-size:30px;line-height:1.06;letter-spacing:-1.5px;margin:0}
@@ -109,6 +111,8 @@ button,input,textarea,select{font:inherit}
 .note-delete{position:absolute;top:12px;right:12px;border:0;background:transparent;color:var(--muted);padding:2px}
 .empty{border:1px dashed var(--line);color:var(--muted);border-radius:14px;padding:24px;text-align:center;font-size:11px}
 .celebrate{position:fixed;top:20px;left:50%;transform:translateX(-50%);background:#243021;color:#e8ff9e;z-index:20;border-radius:50px;padding:11px 16px;display:flex;gap:7px;font-weight:800;font-size:12px;animation:celebrate 1.6s both}
+.update-banner{position:sticky;top:0;z-index:15;width:100%;border:0;border-radius:0;background:var(--accent);color:var(--grad-1);display:flex;align-items:center;justify-content:center;gap:7px;padding:9px 12px;font-size:11px;font-weight:700;animation:update-banner-in .25s ease both}
+@keyframes update-banner-in{from{opacity:0;transform:translateY(-100%)}to{opacity:1;transform:translateY(0)}}
 .celebrate.error{background:#4a2622;color:#ffb4a8}
 .celebrate.info{background:#20302c;color:#bfe6d8}
 .sheet-bg{z-index:10;position:fixed;inset:0;background:#1c251b8c;display:flex;align-items:end}

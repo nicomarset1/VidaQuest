@@ -32,6 +32,7 @@ import {
   Palette,
   Pencil,
   Plus,
+  RefreshCw,
   Sparkles,
   Sun,
   Target,
@@ -486,6 +487,8 @@ export default function App() {
     type: 'success' | 'error' | 'info'
   } | null>(null)
 
+  const [updateAvailable, setUpdateAvailable] = useState(false)
+
   const [theme, setTheme] = useState(() => {
     const saved = localStorage.getItem('vidaquest-theme')
 
@@ -881,6 +884,42 @@ export default function App() {
 
   useEffect(() => {
     navigator.serviceWorker?.register('/sw.js')
+  }, [])
+
+  useEffect(() => {
+    const currentVersion = import.meta.env.VITE_APP_VERSION as
+      | string
+      | undefined
+
+    if (!currentVersion) return
+
+    const checkVersion = async () => {
+      try {
+        const res = await fetch('/version.json', {
+          cache: 'no-store',
+        })
+        const data = await res.json()
+        if (data.v && data.v !== currentVersion) {
+          setUpdateAvailable(true)
+        }
+      } catch {
+        // sin conexión: no molestar
+      }
+    }
+
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') checkVersion()
+    }
+
+    document.addEventListener('visibilitychange', onVisible)
+    window.addEventListener('focus', checkVersion)
+    const interval = setInterval(checkVersion, 5 * 60 * 1000)
+
+    return () => {
+      document.removeEventListener('visibilitychange', onVisible)
+      window.removeEventListener('focus', checkVersion)
+      clearInterval(interval)
+    }
   }, [])
 
   useEffect(() => {
@@ -2642,9 +2681,24 @@ const isDone = (id: string) =>
             aria-label="Cuenta"
           >
             <CircleUserRound size={20} />
+            {incomingFriendRequests.length > 0 && (
+              <span className="notif-dot">
+                {incomingFriendRequests.length}
+              </span>
+            )}
           </button>
         </div>
       </header>
+
+      {updateAvailable && (
+        <button
+          className="update-banner"
+          onClick={() => window.location.reload()}
+        >
+          <RefreshCw size={13} />
+          Hay una versión nueva · tocá para actualizar
+        </button>
+      )}
 
       <main>
         {view === 'home' && (
@@ -4391,7 +4445,14 @@ const isDone = (id: string) =>
                       setView('friends')
                     }}
                   >
-                    <Users />
+                    <span className="menu-row-icon">
+                      <Users />
+                      {incomingFriendRequests.length > 0 && (
+                        <span className="notif-dot">
+                          {incomingFriendRequests.length}
+                        </span>
+                      )}
+                    </span>
 
                     <span>
                       <b>Amigos</b>
