@@ -23,6 +23,7 @@ button,input,textarea,select{font:inherit}
 .week-tier{font-size:10px;color:var(--muted);margin-top:2px;display:block}
 .remind-toggle{display:flex;align-items:flex-start;gap:8px;font-size:11px;color:var(--muted);margin:14px 0 0}
 .remind-toggle input{margin-top:2px;flex:none}
+.remind-toggle span{flex:1;min-width:0}
 .focus-countdown{font:44px 'DM Mono',monospace;text-align:center;margin:18px 0 6px;letter-spacing:1px}
 .focus-presets{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-top:14px}
 .focus-presets button{border:1px solid var(--line);background:var(--card);color:var(--ink);border-radius:11px;padding:14px 4px;font-size:12px;font-weight:700}
