@@ -143,6 +143,62 @@ async function countCompletions(userId: string, date: string) {
   return count ?? 0
 }
 
+// Minutos que faltan hasta la medianoche local del usuario.
+function minutesToMidnight(now: Date, timeZone: string) {
+  const tomorrow = zonedDateString(now, timeZone, 24)
+  const midnight = zonedTimeToUtc(tomorrow, '00:00', timeZone)
+
+  return (midnight.getTime() - now.getTime()) / 60000
+}
+
+// Longitud de la racha que terminó ayer (la que está en riesgo, dado que
+// hoy todavía no hay ninguna tarea completada).
+async function currentStreakLength(
+  userId: string,
+  tz: string,
+  now: Date
+) {
+  const { data } = await supabase
+    .from('completions')
+    .select('date')
+    .eq('user_id', userId)
+    .order('date', { ascending: false })
+    .limit(400)
+
+  const dates = new Set((data ?? []).map(d => d.date))
+
+  let n = 0
+  for (let i = 1; i <= 365; i++) {
+    if (dates.has(zonedDateString(now, tz, -24 * i))) n++
+    else break
+  }
+
+  return n
+}
+
+const STREAK_RISK_CHECKPOINTS = [
+  { minutesLeft: 120, kind: 'streak-risk-120' },
+  { minutesLeft: 60, kind: 'streak-risk-60' },
+  { minutesLeft: 30, kind: 'streak-risk-30' },
+  { minutesLeft: 15, kind: 'streak-risk-15' },
+  { minutesLeft: 5, kind: 'streak-risk-5' },
+] as const
+
+function streakMessage(minutesLeft: number, streakLen: number) {
+  const days = `${streakLen} día${streakLen === 1 ? '' : 's'}`
+
+  if (minutesLeft >= 120)
+    return `🔥 Tu racha de ${days} está en riesgo. Te quedan 2 horas para completar algo hoy.`
+  if (minutesLeft >= 60)
+    return `⏰ 1 hora para que se corte tu racha de ${days}. ¡No la dejes ir!`
+  if (minutesLeft >= 30)
+    return `🚨 30 minutos. Tu racha de ${days} está a punto de terminar.`
+  if (minutesLeft >= 15)
+    return `⚠️ ¡15 minutos! Marcá algo ahora o perdés ${days} de racha.`
+
+  return `🔴 ¡ÚLTIMOS 5 MINUTOS! Tu racha de ${days} se corta a medianoche.`
+}
+
 Deno.serve(async req => {
   if (req.headers.get('x-cron-secret') !== CRON_SECRET) {
     return new Response('unauthorized', { status: 401 })
@@ -216,8 +272,8 @@ Deno.serve(async req => {
     }
   }
 
-  // Las dos notificaciones diarias corren una sola vez, cuando el reloj de
-  // CADA usuario entra en su franja horaria (20:00 y 23:00, hora local).
+  // Los avisos diarios corren según el reloj de CADA usuario: uno a las
+  // 20:00 y una escalada de varios entre las 22:00 y las 00:00.
   for (const [userId, userSubs] of subsByUser) {
     const tz = userTimezone.get(userId) || FALLBACK_TZ
     const hour = zonedHourOf(now, tz)
@@ -245,26 +301,50 @@ Deno.serve(async req => {
       await logSent(userId, 'no-open', today)
     }
 
-    // 3) "Vas a perder la racha" — 23:00 local.
-    if (
-      hour === 23 &&
-      !(await alreadyLogged(userId, 'streak-risk', today))
-    ) {
-      const yesterday = zonedDateString(now, tz, -24)
-      const doneToday = await countCompletions(userId, today)
-      const doneYesterday = await countCompletions(userId, yesterday)
+    // 3) "Vas a perder la racha" — cuenta regresiva escalonada de 22:00 a
+    // 00:00 local, estilo Duolingo: varios avisos cada vez más urgentes
+    // que se van reemplazando entre sí en la pantalla de bloqueo.
+    if (hour === 22 || hour === 23) {
+      const minsLeft = minutesToMidnight(now, tz)
 
-      if (!doneToday && doneYesterday) {
-        for (const s of userSubs) {
-          await sendTo(s, {
-            title: 'VidaQuest',
-            body: 'Tu racha está en riesgo. Completá algo antes de la medianoche.',
-            tag: 'streak-risk',
-          })
+      for (const cp of STREAK_RISK_CHECKPOINTS) {
+        if (minsLeft > cp.minutesLeft) continue
+        if (await alreadyLogged(userId, cp.kind, today)) continue
+
+        const yesterday = zonedDateString(now, tz, -24)
+        const doneToday = await countCompletions(
+          userId,
+          today
+        )
+        const doneYesterday = await countCompletions(
+          userId,
+          yesterday
+        )
+
+        if (!doneToday && doneYesterday) {
+          const streakLen = await currentStreakLength(
+            userId,
+            tz,
+            now
+          )
+
+          for (const s of userSubs) {
+            await sendTo(s, {
+              title: 'VidaQuest',
+              body: streakMessage(
+                cp.minutesLeft,
+                streakLen
+              ),
+              tag: 'streak-risk',
+              renotify: true,
+              requireInteraction: true,
+              vibrate: [80, 40, 80, 40, 160],
+            })
+          }
         }
-      }
 
-      await logSent(userId, 'streak-risk', today)
+        await logSent(userId, cp.kind, today)
+      }
     }
   }
 
