@@ -220,42 +220,49 @@ const ACHIEVEMENTS = [
     id: 'streak-7',
     icon: '🔥',
     title: 'Racha de 7 días',
+    tier: 'bronze',
     check: (s: AchievementStats) => s.bestStreak >= 7,
   },
   {
     id: 'streak-30',
     icon: '🔥',
     title: 'Racha de 30 días',
+    tier: 'silver',
     check: (s: AchievementStats) => s.bestStreak >= 30,
   },
   {
     id: 'streak-100',
     icon: '🔥',
     title: 'Racha de 100 días',
+    tier: 'gold',
     check: (s: AchievementStats) => s.bestStreak >= 100,
   },
   {
     id: 'level-5',
     icon: '🏆',
     title: 'Nivel 5',
+    tier: 'bronze',
     check: (s: AchievementStats) => s.level >= 5,
   },
   {
     id: 'level-10',
     icon: '🏆',
     title: 'Nivel 10',
+    tier: 'silver',
     check: (s: AchievementStats) => s.level >= 10,
   },
   {
     id: 'level-20',
     icon: '🏆',
     title: 'Nivel 20',
+    tier: 'gold',
     check: (s: AchievementStats) => s.level >= 20,
   },
   {
     id: 'tasks-25',
     icon: '✅',
     title: '25 tareas hechas',
+    tier: 'bronze',
     check: (s: AchievementStats) =>
       s.completionsCount >= 25,
   },
@@ -263,6 +270,7 @@ const ACHIEVEMENTS = [
     id: 'tasks-100',
     icon: '✅',
     title: '100 tareas hechas',
+    tier: 'silver',
     check: (s: AchievementStats) =>
       s.completionsCount >= 100,
   },
@@ -270,6 +278,7 @@ const ACHIEVEMENTS = [
     id: 'tasks-365',
     icon: '✅',
     title: '365 tareas hechas',
+    tier: 'gold',
     check: (s: AchievementStats) =>
       s.completionsCount >= 365,
   },
@@ -277,6 +286,7 @@ const ACHIEVEMENTS = [
     id: 'friends-1',
     icon: '🤝',
     title: 'Primer amigo agregado',
+    tier: 'bronze',
     check: (s: AchievementStats) =>
       s.friendsCount >= 1,
   },
@@ -284,6 +294,7 @@ const ACHIEVEMENTS = [
     id: 'friends-3',
     icon: '🤝',
     title: '3 amigos conectados',
+    tier: 'silver',
     check: (s: AchievementStats) =>
       s.friendsCount >= 3,
   },
@@ -291,6 +302,7 @@ const ACHIEVEMENTS = [
     id: 'friends-5',
     icon: '🤝',
     title: '5 amigos conectados',
+    tier: 'gold',
     check: (s: AchievementStats) =>
       s.friendsCount >= 5,
   },
@@ -3839,9 +3851,14 @@ const isDone = (id: string) =>
                     }`}
                     key={a.id}
                   >
-                    <span className="badge-icon">
-                      {a.icon}
-                    </span>
+                    <div
+                      className={`badge-shield ${a.tier}`}
+                    >
+                      <span className="badge-icon">
+                        {a.icon}
+                      </span>
+                    </div>
+
                     <small>{a.title}</small>
                   </div>
                 )
