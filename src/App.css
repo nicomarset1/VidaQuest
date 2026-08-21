@@ -48,6 +48,7 @@ button,input,textarea,select{font:inherit}
 .mission b{font-size:12px}
 .mission small{color:var(--muted);font-size:10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .mission em{font:10px 'DM Mono';font-style:normal;color:var(--accent-text);margin-left:auto;white-space:nowrap}
+.edit{border:0;border-left:1px solid var(--line);background:transparent;color:var(--muted);padding:13px}
 .delete{border:0;border-left:1px solid var(--line);background:transparent;color:#b66c63;padding:13px}
 .insight{background:var(--accent-soft);border-radius:14px;margin-top:17px;padding:13px;display:flex;gap:9px;color:var(--accent-text)}
 .insight p{font-size:10px;margin:0}

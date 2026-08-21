@@ -30,6 +30,7 @@ import {
   Moon,
   NotebookPen,
   Palette,
+  Pencil,
   Plus,
   Sparkles,
   Sun,
@@ -464,7 +465,14 @@ export default function App() {
     'unsupported' | 'needs-install' | 'off' | 'on' | 'loading'
   >('off')
 
-  const [task, setTask] = useState({
+  const [task, setTask] = useState<{
+    id: string | null
+    title: string
+    area: string
+    time: string
+    target: number
+  }>({
+    id: null,
     title: '',
     area: 'Personal',
     time: '',
@@ -1260,6 +1268,7 @@ const isDone = (id: string) =>
     }))
 
     setTask({
+      id: null,
       title: '',
       area: 'Personal',
       time: '',
@@ -1269,6 +1278,91 @@ const isDone = (id: string) =>
     setSheet(null)
 
     toastMsg('Tarea creada')
+  }
+
+  const updateTask = async () => {
+    if (!task.id || !task.title.trim()) return
+
+    if (!supabase) {
+      toastMsg('Conectá Supabase primero', 'error')
+      return
+    }
+
+    const {
+      data: userData,
+    } = await supabase.auth.getUser()
+
+    const user = userData.user
+
+    if (!user) {
+      toastMsg('Iniciá sesión primero', 'error')
+      return
+    }
+
+    const { error } = await supabase
+      .from('tasks')
+      .update({
+        title: task.title.trim(),
+        area: task.area,
+        time: task.time || 'Sin horario',
+        weekly_target:
+          Number(task.target) || 1,
+      })
+      .eq('id', task.id)
+      .eq('user_id', user.id)
+
+    if (error) {
+      console.error(
+        'Error actualizando tarea:',
+        error
+      )
+      toastMsg('No se pudo guardar el cambio', 'error')
+      return
+    }
+
+    const editedId = task.id
+    const editedTitle = task.title.trim()
+    const editedArea = task.area
+    const editedTime = task.time || 'Sin horario'
+    const editedTarget = Number(task.target) || 1
+
+    setStore(s => ({
+      ...s,
+      tasks: s.tasks.map(t =>
+        t.id === editedId
+          ? {
+              ...t,
+              title: editedTitle,
+              area: editedArea,
+              time: editedTime,
+              weeklyTarget: editedTarget,
+            }
+          : t
+      ),
+    }))
+
+    setTask({
+      id: null,
+      title: '',
+      area: 'Personal',
+      time: '',
+      target: 4,
+    })
+
+    setSheet(null)
+
+    toastMsg('Tarea actualizada')
+  }
+
+  const startEditTask = (t: Task) => {
+    setTask({
+      id: t.id,
+      title: t.title,
+      area: t.area,
+      time: t.time === 'Sin horario' ? '' : t.time,
+      target: t.weeklyTarget,
+    })
+    setSheet('task')
   }
 
   /*
@@ -2132,9 +2226,16 @@ const isDone = (id: string) =>
               </div>
 
               <button
-                onClick={() =>
+                onClick={() => {
+                  setTask({
+                    id: null,
+                    title: '',
+                    area: 'Personal',
+                    time: '',
+                    target: 4,
+                  })
                   setSheet('task')
-                }
+                }}
               >
                 <Plus size={20} />
               </button>
@@ -2175,20 +2276,27 @@ const isDone = (id: string) =>
             back={() =>
               setView('home')
             }
-            action={() =>
+            action={() => {
+              setTask({
+                id: null,
+                title: '',
+                area: 'Personal',
+                time: '',
+                target: 4,
+              })
               setSheet('task')
-            }
+            }}
           >
             <p className="filter">
               Tocá una tarea para marcarla.
-              Podés eliminar las que ya no
-              necesitás.
+              Usá el lápiz para editarla.
             </p>
 
             <TaskList
               tasks={store.tasks}
               done={isDone}
               onToggle={toggle}
+              onEdit={startEditTask}
               onDelete={requestDeleteTask}
               weekly={countWeek}
             />
@@ -2901,13 +3009,15 @@ const isDone = (id: string) =>
                 </span>
 
                 <h2>
-                  Nueva tarea
+                  {task.id
+                    ? 'Editar tarea'
+                    : 'Nueva tarea'}
                 </h2>
 
                 <p>
-                  Definí qué querés hacer y
-                  cuánto querés repetirlo esta
-                  semana.
+                  {task.id
+                    ? 'Ajustá el horario o cuánto querés repetirla esta semana.'
+                    : 'Definí qué querés hacer y cuánto querés repetirlo esta semana.'}
                 </p>
 
                 <input
@@ -2996,10 +3106,31 @@ const isDone = (id: string) =>
 
                 <button
                   className="primary"
-                  onClick={addTask}
+                  onClick={
+                    task.id ? updateTask : addTask
+                  }
                 >
-                  Crear tarea · +30 XP
+                  {task.id
+                    ? 'Guardar cambios'
+                    : 'Crear tarea · +30 XP'}
                 </button>
+
+                {task.id && (
+                  <button
+                    className="danger"
+                    onClick={() => {
+                      const current =
+                        store.tasks.find(
+                          t => t.id === task.id
+                        )
+                      if (!current) return
+                      requestDeleteTask(current)
+                    }}
+                  >
+                    <Trash2 size={16} />
+                    Eliminar tarea
+                  </button>
+                )}
               </>
             )}
 
@@ -4402,12 +4533,14 @@ function TaskList({
   tasks,
   done,
   onToggle,
+  onEdit,
   onDelete,
   weekly,
 }: {
   tasks: Task[]
   done: (id: string) => boolean
   onToggle: (id: string) => void
+  onEdit?: (t: Task) => void
   onDelete?: (t: Task) => void
   weekly?: (id: string) => number
 }) {
@@ -4457,6 +4590,18 @@ function TaskList({
                 +{t.xp} XP
               </em>
             </button>
+
+            {onEdit && (
+              <button
+                className="edit"
+                aria-label={`Editar ${t.title}`}
+                onClick={() =>
+                  onEdit(t)
+                }
+              >
+                <Pencil size={15} />
+              </button>
+            )}
 
             {onDelete && (
               <button
