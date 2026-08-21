@@ -594,7 +594,7 @@ export default function App() {
     completionsResult.data
   )
 
-  const dbTasks: Task[] = (tasksResult.data || []).map(
+  let dbTasks: Task[] = (tasksResult.data || []).map(
     (t: any) => ({
       id: t.id,
       title: t.title,
@@ -605,6 +605,52 @@ export default function App() {
       weeklyTarget: t.weekly_target,
     })
   )
+
+  // Cuenta recién creada, sin nada guardado todavía: en vez de mostrar
+  // las tareas de ejemplo solo como datos locales (con ids falsos que
+  // no se pueden borrar ni editar), las guardamos como filas reales.
+  if (
+    !tasksResult.error &&
+    dbTasks.length === 0 &&
+    !completionsResult.error &&
+    !(completionsResult.data || []).length &&
+    !remindersResult.error &&
+    !(remindersResult.data || []).length &&
+    !notesResult.error &&
+    !(notesResult.data || []).length
+  ) {
+    const seeded = await supabase
+      .from('tasks')
+      .insert(
+        starter.tasks.map(t => ({
+          user_id: userId,
+          title: t.title,
+          area: t.area,
+          xp: t.xp,
+          time: t.time,
+          weekly_target: t.weeklyTarget,
+          color: t.color,
+        }))
+      )
+      .select()
+
+    if (!seeded.error && seeded.data) {
+      dbTasks = seeded.data.map((t: any) => ({
+        id: t.id,
+        title: t.title,
+        area: t.area,
+        xp: t.xp,
+        time: t.time,
+        color: t.color,
+        weeklyTarget: t.weekly_target,
+      }))
+    } else if (seeded.error) {
+      console.error(
+        'Error sembrando tareas iniciales:',
+        seeded.error
+      )
+    }
+  }
 
   const dbCompletions: Completion[] = (
     completionsResult.data || []
