@@ -6120,13 +6120,24 @@ const isDone = (id: string) =>
             </button>
 
             <div className="badge unlocked badge-detail-shield">
-              <div
-                className={`badge-shield ${badgeDetail.tier}`}
-              >
-                <badgeDetail.icon
-                  className="badge-icon"
-                  size={34}
-                />
+              <div className="badge-shield-3d">
+                <div
+                  className={`badge-shield badge-shield-front ${badgeDetail.tier}`}
+                >
+                  <badgeDetail.icon
+                    className="badge-icon"
+                    size={34}
+                  />
+                </div>
+
+                <div
+                  className={`badge-shield badge-shield-back ${badgeDetail.tier}`}
+                >
+                  <badgeDetail.icon
+                    className="badge-icon"
+                    size={34}
+                  />
+                </div>
               </div>
             </div>
 
