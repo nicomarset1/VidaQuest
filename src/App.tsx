@@ -342,19 +342,22 @@ const ACHIEVEMENTS = [
  * a una línea al pasar de perfil.
  */
 const SHIELD_POLY = [
-  [50, 2],
-  [85, 13],
-  [100, 38],
-  [92, 68],
-  [50, 100],
-  [8, 68],
-  [0, 38],
-  [15, 13],
+  [4, 2],
+  [96, 2],
+  [96, 44],
+  [50, 98],
+  [4, 44],
 ] as const
+
+// Se usa como clip-path tanto en la grilla como en el detalle, para que
+// la silueta plana y la cara del prisma sean exactamente la misma.
+const SHIELD_CLIP = `polygon(${SHIELD_POLY.map(
+  ([x, y]) => `${x}% ${y}%`
+).join(',')})`
 
 const SHIELD_W = 132
 const SHIELD_H = 150
-const SHIELD_DEPTH = 34
+const SHIELD_DEPTH = 20
 
 // Luz fija arriba a la izquierda, para sombrear cada pared según hacia
 // dónde mira y que el prisma se lea como un volumen y no como una
@@ -3953,6 +3956,7 @@ const isDone = (id: string) =>
                   >
                     <div
                       className={`badge-shield ${a.tier}`}
+                      style={{ clipPath: SHIELD_CLIP }}
                     >
                       <a.icon
                         className="badge-icon"
@@ -6196,6 +6200,7 @@ const isDone = (id: string) =>
 
                   <div
                     className={`badge-shield badge-shield-front ${badgeDetail.tier}`}
+                    style={{ clipPath: SHIELD_CLIP }}
                   >
                     <badgeDetail.icon
                       className="badge-icon"
@@ -6205,6 +6210,7 @@ const isDone = (id: string) =>
 
                   <div
                     className={`badge-shield badge-shield-back ${badgeDetail.tier}`}
+                    style={{ clipPath: SHIELD_CLIP }}
                   >
                     <badgeDetail.icon
                       className="badge-icon"
