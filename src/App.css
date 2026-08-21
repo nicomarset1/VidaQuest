@@ -227,7 +227,7 @@ button,input,textarea,select{font:inherit}
 .friend-cheer{width:100%;margin-top:10px;border:1px dashed var(--line);background:transparent;color:var(--ink);border-radius:11px;padding:9px;font-size:11px;font-weight:700}
 .rank-list{display:grid;gap:7px;margin-top:14px}
 .rank-row{display:flex;align-items:center;gap:9px;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:9px 12px}
-.rank-row.me{border-color:var(--accent-text);background:var(--accent-soft)}
+.rank-row.me{border-color:var(--accent-text);background:var(--accent-soft);color:var(--grad-1)}
 .rank-pos{width:20px;text-align:center;font-size:12px;font-weight:800;flex:none}
 .rank-label{width:88px;flex:none;font-size:11px;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .rank-bar{flex:1;height:7px;border-radius:99px;background:var(--track);overflow:hidden}

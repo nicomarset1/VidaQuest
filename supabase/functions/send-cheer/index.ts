@@ -72,17 +72,17 @@ Deno.serve(async req => {
       : friendship.requester_id
 
   const today = new Date().toISOString().slice(0, 10)
-  const kind = `cheer-from-${fromUser.id}`
+  const kindPrefix = `cheer-from-${fromUser.id}`
+  const DAILY_LIMIT = 2
 
-  const { data: already } = await admin
+  const { count: sentToday } = await admin
     .from('notification_log')
-    .select('id')
+    .select('id', { count: 'exact', head: true })
     .eq('user_id', toUserId)
-    .eq('kind', kind)
     .eq('log_date', today)
-    .maybeSingle()
+    .like('kind', `${kindPrefix}%`)
 
-  if (already) {
+  if ((sentToday ?? 0) >= DAILY_LIMIT) {
     return json({ ok: false, reason: 'cooldown' })
   }
 
@@ -92,6 +92,7 @@ Deno.serve(async req => {
     .eq('user_id', toUserId)
 
   const fromLabel = fromUser.email ?? 'Un amigo'
+  let sentCount = 0
 
   for (const s of subs ?? []) {
     try {
@@ -106,6 +107,7 @@ Deno.serve(async req => {
           tag: 'cheer',
         })
       )
+      sentCount++
     } catch (err) {
       const statusCode = (err as { statusCode?: number }).statusCode
       if (statusCode === 404 || statusCode === 410) {
@@ -116,9 +118,15 @@ Deno.serve(async req => {
     }
   }
 
-  await admin
-    .from('notification_log')
-    .insert({ user_id: toUserId, kind, log_date: today })
+  // La entrada se guarda con un sufijo único: notification_log tiene
+  // una restricción unique(user_id, kind, log_date) pensada para
+  // avisos que se mandan una sola vez, y acá necesitamos permitir
+  // hasta DAILY_LIMIT por día para el mismo par de amigos.
+  await admin.from('notification_log').insert({
+    user_id: toUserId,
+    kind: `${kindPrefix}-${crypto.randomUUID()}`,
+    log_date: today,
+  })
 
-  return json({ ok: true, sentTo: (subs ?? []).length })
+  return json({ ok: true, sentTo: sentCount })
 })
