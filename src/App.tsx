@@ -222,90 +222,115 @@ const ACHIEVEMENTS = [
     icon: Flame,
     title: 'Racha de 7 días',
     tier: 'bronze',
-    check: (s: AchievementStats) => s.bestStreak >= 7,
+    target: 7,
+    description:
+      'Completá al menos una tarea por día, 7 días seguidos.',
+    metric: (s: AchievementStats) => s.bestStreak,
   },
   {
     id: 'streak-30',
     icon: Flame,
     title: 'Racha de 30 días',
     tier: 'silver',
-    check: (s: AchievementStats) => s.bestStreak >= 30,
+    target: 30,
+    description:
+      'Mantené la racha viva 30 días seguidos, sin saltearte ninguno.',
+    metric: (s: AchievementStats) => s.bestStreak,
   },
   {
     id: 'streak-100',
     icon: Flame,
     title: 'Racha de 100 días',
     tier: 'gold',
-    check: (s: AchievementStats) => s.bestStreak >= 100,
+    target: 100,
+    description:
+      '100 días seguidos sin cortar la racha. El nivel top de constancia.',
+    metric: (s: AchievementStats) => s.bestStreak,
   },
   {
     id: 'level-10',
     icon: Trophy,
     title: 'Nivel 10',
     tier: 'bronze',
-    check: (s: AchievementStats) => s.level >= 10,
+    target: 10,
+    description:
+      'Sumá XP completando tareas hasta llegar a nivel 10.',
+    metric: (s: AchievementStats) => s.level,
   },
   {
     id: 'level-20',
     icon: Trophy,
     title: 'Nivel 20',
     tier: 'silver',
-    check: (s: AchievementStats) => s.level >= 20,
+    target: 20,
+    description: 'Seguí sumando XP hasta llegar a nivel 20.',
+    metric: (s: AchievementStats) => s.level,
   },
   {
     id: 'level-50',
     icon: Trophy,
     title: 'Nivel 50',
     tier: 'gold',
-    check: (s: AchievementStats) => s.level >= 50,
+    target: 50,
+    description:
+      'El techo de la ambición: llegá a nivel 50.',
+    metric: (s: AchievementStats) => s.level,
   },
   {
     id: 'tasks-25',
     icon: CircleCheck,
     title: '25 tareas hechas',
     tier: 'bronze',
-    check: (s: AchievementStats) =>
-      s.completionsCount >= 25,
+    target: 25,
+    description: 'Marcá 25 tareas como hechas en total.',
+    metric: (s: AchievementStats) => s.completionsCount,
   },
   {
     id: 'tasks-100',
     icon: CircleCheck,
     title: '100 tareas hechas',
     tier: 'silver',
-    check: (s: AchievementStats) =>
-      s.completionsCount >= 100,
+    target: 100,
+    description: 'Llegá a 100 tareas completadas en total.',
+    metric: (s: AchievementStats) => s.completionsCount,
   },
   {
     id: 'tasks-365',
     icon: CircleCheck,
     title: '365 tareas hechas',
     tier: 'gold',
-    check: (s: AchievementStats) =>
-      s.completionsCount >= 365,
+    target: 365,
+    description:
+      'Un año entero de constancia: 365 tareas completadas.',
+    metric: (s: AchievementStats) => s.completionsCount,
   },
   {
     id: 'friends-1',
     icon: Users,
     title: 'Primer amigo agregado',
     tier: 'bronze',
-    check: (s: AchievementStats) =>
-      s.friendsCount >= 1,
+    target: 1,
+    description:
+      'Agregá a tu primer amigo desde la sección Amigos.',
+    metric: (s: AchievementStats) => s.friendsCount,
   },
   {
     id: 'friends-3',
     icon: Users,
     title: '3 amigos conectados',
     tier: 'silver',
-    check: (s: AchievementStats) =>
-      s.friendsCount >= 3,
+    target: 3,
+    description: 'Conectate con 3 amigos.',
+    metric: (s: AchievementStats) => s.friendsCount,
   },
   {
     id: 'friends-5',
     icon: Users,
     title: '5 amigos conectados',
     tier: 'gold',
-    check: (s: AchievementStats) =>
-      s.friendsCount >= 5,
+    target: 5,
+    description: 'Sumá 5 amigos a tu lista.',
+    metric: (s: AchievementStats) => s.friendsCount,
   },
 ] as const
 
@@ -679,12 +704,25 @@ export default function App() {
     dir: 'in' | 'next' | 'prev'
   } | null>(null)
 
+  const [badgeOverlay, setBadgeOverlay] = useState<{
+    id: (typeof ACHIEVEMENTS)[number]['id']
+    closing: boolean
+  } | null>(null)
+
   const openStat = (key: NonNullable<typeof statOverlay>['key']) =>
     setStatOverlay({ key, closing: false })
 
   const closeStat = () => {
     setStatOverlay(o => (o ? { ...o, closing: true } : null))
     setTimeout(() => setStatOverlay(null), 200)
+  }
+
+  const openBadge = (id: (typeof ACHIEVEMENTS)[number]['id']) =>
+    setBadgeOverlay({ id, closing: false })
+
+  const closeBadge = () => {
+    setBadgeOverlay(o => (o ? { ...o, closing: true } : null))
+    setTimeout(() => setBadgeOverlay(null), 200)
   }
 
   const openDay = (date: string) =>
@@ -1568,6 +1606,10 @@ const isDone = (id: string) =>
     weeklyRate,
     friendsCount: acceptedFriends.length,
   }
+
+  const badgeDetail = badgeOverlay
+    ? ACHIEVEMENTS.find(a => a.id === badgeOverlay.id) ?? null
+    : null
 
   const toastMsg = (
     text: string,
@@ -3841,16 +3883,16 @@ const isDone = (id: string) =>
 
             <div className="badge-grid">
               {ACHIEVEMENTS.map(a => {
-                const unlocked = a.check(
-                  achievementStats
-                )
+                const unlocked =
+                  a.metric(achievementStats) >= a.target
 
                 return (
-                  <div
+                  <button
                     className={`badge ${
                       unlocked ? 'unlocked' : ''
                     }`}
                     key={a.id}
+                    onClick={() => openBadge(a.id)}
                   >
                     <div
                       className={`badge-shield ${a.tier}`}
@@ -3862,7 +3904,7 @@ const isDone = (id: string) =>
                     </div>
 
                     <small>{a.title}</small>
-                  </div>
+                  </button>
                 )
               })}
             </div>
@@ -6054,6 +6096,85 @@ const isDone = (id: string) =>
                 <ChevronRight size={18} />
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {badgeDetail && (
+        <div
+          className={`stat-overlay ${
+            badgeOverlay?.closing ? 'closing' : ''
+          }`}
+          onClick={closeBadge}
+        >
+          <div
+            className="stat-detail-card badge-detail-card"
+            onClick={e => e.stopPropagation()}
+          >
+            <button
+              className="stat-detail-close"
+              aria-label="Minimizar"
+              onClick={closeBadge}
+            >
+              <X size={18} />
+            </button>
+
+            <div className="badge unlocked badge-detail-shield">
+              <div
+                className={`badge-shield ${badgeDetail.tier}`}
+              >
+                <badgeDetail.icon
+                  className="badge-icon"
+                  size={34}
+                />
+              </div>
+            </div>
+
+            <h2>{badgeDetail.title}</h2>
+
+            {(() => {
+              const current = Math.min(
+                badgeDetail.metric(achievementStats),
+                badgeDetail.target
+              )
+              const unlocked = current >= badgeDetail.target
+              const pct = Math.round(
+                (current / badgeDetail.target) * 100
+              )
+
+              return (
+                <>
+                  {unlocked ? (
+                    <p className="badge-status">
+                      ✓ Insignia conseguida
+                    </p>
+                  ) : (
+                    <p className="badge-status locked">
+                      Todavía no la conseguiste
+                    </p>
+                  )}
+
+                  <p>{badgeDetail.description}</p>
+
+                  {!unlocked && (
+                    <>
+                      <div className="weekly-line">
+                        <span
+                          style={{
+                            width: `${pct}%`,
+                          }}
+                        />
+                      </div>
+
+                      <p className="stat-sub">
+                        Llevás {current} de{' '}
+                        {badgeDetail.target}
+                      </p>
+                    </>
+                  )}
+                </>
+              )
+            })()}
           </div>
         </div>
       )}
