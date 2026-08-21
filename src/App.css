@@ -9,7 +9,9 @@ html[data-theme=uva]{--ink:#f1ecf7;--muted:#b3a3c4;--line:#3b2f4c;--paper:#1a142
 button,input,textarea,select{font:inherit}
 .top{height:70px;display:flex;align-items:center;justify-content:space-between}
 .brand{font-size:19px;font-weight:800;letter-spacing:-1px;display:flex;align-items:center;gap:7px}
-.brand span{width:29px;height:29px;border-radius:9px;background:var(--ink);color:var(--accent);display:grid;place-items:center}
+.brand span{width:31px;height:31px;border-radius:10px;background:linear-gradient(140deg,var(--grad-1),var(--grad-2));color:var(--accent);display:grid;place-items:center;position:relative;overflow:hidden;box-shadow:0 2px 6px rgba(0,0,0,.22)}
+.brand span::after{content:'';position:absolute;inset:0;background:linear-gradient(150deg,rgba(255,255,255,.22),rgba(255,255,255,0) 55%);pointer-events:none}
+.brand span svg{width:17px;height:17px;position:relative;z-index:1}
 .top-buttons{display:flex;gap:7px}
 .bell,.plain-icon{border:0;background:var(--card);width:39px;height:39px;border-radius:12px;color:var(--ink);display:grid;place-items:center;position:relative}
 .bell.linked{color:var(--accent-text)}

@@ -21,7 +21,6 @@ import {
   Eye,
   EyeOff,
   Flame,
-  Gamepad2,
   GripVertical,
   Home,
   KeyRound,
@@ -3201,7 +3200,7 @@ const isDone = (id: string) =>
       <header className="top">
         <div className="brand">
           <span>
-            <Gamepad2 size={18} />
+            <BrandMark />
           </span>
           vidaquest
         </div>
@@ -6702,6 +6701,38 @@ function Page({
 
       {children}
     </section>
+  )
+}
+
+/*
+ * Marca de VidaQuest: un tilde que al subir se abre en punta de flecha.
+ * Junta las dos ideas de la aplicación (tarea cumplida + progreso que
+ * sube) en un solo trazo, y de paso dibuja la V del nombre.
+ */
+function BrandMark() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      aria-hidden="true"
+      focusable="false"
+    >
+      <path
+        d="M3.6 12.4 L9.4 18.2 L20.4 4.6"
+        stroke="currentColor"
+        strokeWidth="2.9"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M14.7 4.6 H20.4 V10.6"
+        stroke="currentColor"
+        strokeWidth="2.9"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        opacity=".55"
+      />
+    </svg>
   )
 }
 
