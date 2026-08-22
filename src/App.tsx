@@ -787,6 +787,13 @@ export default function App() {
     viewed: string[]
   }>({ celebrated: [], viewed: [] })
 
+  // Antes de que esto sea true, achievementState.celebrated todavía
+  // no refleja lo que de verdad ya se celebró (viene cargando desde
+  // Supabase) — si se dejara comparar contra eso, CUALQUIER insignia
+  // ya ganada se vería como "nueva" en cada apertura de la app.
+  const [achievementStateLoaded, setAchievementStateLoaded] =
+    useState(false)
+
   const [celebrationQueue, setCelebrationQueue] = useState<
     string[]
   >([])
@@ -1737,7 +1744,11 @@ const isDone = (id: string) =>
   ).map(a => a.id)
 
   const loadAchievementState = async () => {
-    if (!supabase || !authUser) return
+    if (!supabase || !authUser) {
+      setAchievementState({ celebrated: [], viewed: [] })
+      setAchievementStateLoaded(true)
+      return
+    }
 
     const { data } = await supabase
       .from('achievement_state')
@@ -1749,15 +1760,21 @@ const isDone = (id: string) =>
       celebrated: data?.celebrated ?? [],
       viewed: data?.viewed ?? [],
     })
+    setAchievementStateLoaded(true)
   }
 
   useEffect(() => {
-    if (authUser) loadAchievementState()
+    setAchievementStateLoaded(false)
+    loadAchievementState()
   }, [authUser])
 
   // Insignias que se acaban de desbloquear y todavía no mostraron su
-  // animación: se encolan para celebrarlas una por una.
+  // animación: se encolan para celebrarlas una por una. Nunca antes de
+  // que achievementStateLoaded sea true, o cualquier insignia ya
+  // ganada hace tiempo se vería como recién conseguida.
   useEffect(() => {
+    if (!achievementStateLoaded) return
+
     const toCelebrate = unlockedAchievementIds.filter(
       id =>
         !achievementState.celebrated.includes(id) &&
@@ -1768,7 +1785,11 @@ const isDone = (id: string) =>
     if (toCelebrate.length > 0) {
       setCelebrationQueue(q => [...q, ...toCelebrate])
     }
-  }, [unlockedAchievementIds, achievementState.celebrated])
+  }, [
+    unlockedAchievementIds,
+    achievementState.celebrated,
+    achievementStateLoaded,
+  ])
 
   useEffect(() => {
     if (activeCelebration || celebrationQueue.length === 0) return
@@ -1816,7 +1837,12 @@ const isDone = (id: string) =>
   // Al entrar a Progreso se marcan como vistas todas las insignias ya
   // celebradas, así se apaga el aviso en la pestaña.
   useEffect(() => {
-    if (view !== 'stats' || !authUser) return
+    if (
+      view !== 'stats' ||
+      !authUser ||
+      !achievementStateLoaded
+    )
+      return
     if (
       achievementState.celebrated.every(id =>
         achievementState.viewed.includes(id)
@@ -1839,7 +1865,7 @@ const isDone = (id: string) =>
 
       return { ...s, viewed }
     })
-  }, [view, achievementState.celebrated])
+  }, [view, achievementState.celebrated, achievementStateLoaded])
 
   const unseenAchievementsCount =
     achievementState.celebrated.filter(
