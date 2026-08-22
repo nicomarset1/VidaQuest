@@ -1743,6 +1743,31 @@ const isDone = (id: string) =>
     a => a.metric(achievementStats) >= a.target
   ).map(a => a.id)
 
+  // Ojo: las consultas de supabase-js son perezosas — si no se hace
+  // await (o .then), la petición nunca sale. Por eso esto va acá y no
+  // suelto adentro de un setState.
+  const persistAchievementState = async (
+    celebrated: string[],
+    viewed: string[]
+  ) => {
+    if (!supabase || !authUser) return
+
+    const { error } = await supabase
+      .from('achievement_state')
+      .upsert({
+        user_id: authUser.id,
+        celebrated,
+        viewed,
+      })
+
+    if (error) {
+      console.error(
+        'Error guardando estado de insignias:',
+        error
+      )
+    }
+  }
+
   const loadAchievementState = async () => {
     if (!supabase || !authUser) {
       setAchievementState({ celebrated: [], viewed: [] })
@@ -1798,21 +1823,12 @@ const isDone = (id: string) =>
     setCelebrationQueue(rest)
     setActiveCelebration({ id: next, closing: false })
 
-    setAchievementState(s => {
-      const celebrated = Array.from(
-        new Set([...s.celebrated, next])
-      )
+    const celebrated = Array.from(
+      new Set([...achievementState.celebrated, next])
+    )
 
-      if (supabase && authUser) {
-        supabase.from('achievement_state').upsert({
-          user_id: authUser.id,
-          celebrated,
-          viewed: s.viewed,
-        })
-      }
-
-      return { ...s, celebrated }
-    })
+    setAchievementState(s => ({ ...s, celebrated }))
+    persistAchievementState(celebrated, achievementState.viewed)
   }, [celebrationQueue, activeCelebration])
 
   useEffect(() => {
@@ -1850,21 +1866,15 @@ const isDone = (id: string) =>
     )
       return
 
-    setAchievementState(s => {
-      const viewed = Array.from(
-        new Set([...s.viewed, ...s.celebrated])
-      )
+    const viewed = Array.from(
+      new Set([
+        ...achievementState.viewed,
+        ...achievementState.celebrated,
+      ])
+    )
 
-      if (supabase) {
-        supabase.from('achievement_state').upsert({
-          user_id: authUser.id,
-          celebrated: s.celebrated,
-          viewed,
-        })
-      }
-
-      return { ...s, viewed }
-    })
+    setAchievementState(s => ({ ...s, viewed }))
+    persistAchievementState(achievementState.celebrated, viewed)
   }, [view, achievementState.celebrated, achievementStateLoaded])
 
   const unseenAchievementsCount =
