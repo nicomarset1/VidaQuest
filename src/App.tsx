@@ -44,6 +44,7 @@ import {
   Trophy,
   Users,
   X,
+  type LucideIcon,
 } from 'lucide-react'
 import { supabase } from './lib/supabase'
 import './App.css'
@@ -396,6 +397,54 @@ const SHIELD_EDGES = SHIELD_POLY.map((p, i) => {
   }
 })
 
+// El prisma 3D de una insignia, siempre "encendida" (bronce/plata/oro
+// según el nivel). Se reutiliza en la tarjeta de detalle y en la
+// animación de insignia nueva, para no duplicar la geometría.
+function Badge3DShield({
+  tier,
+  Icon,
+}: {
+  tier: 'bronze' | 'silver' | 'gold'
+  Icon: LucideIcon
+}) {
+  return (
+    <div className="badge unlocked badge-detail-shield">
+      <div className="badge-shield-3d">
+        <div className="badge-shield-spin">
+          {SHIELD_EDGES.map((e, i) => (
+            <div
+              key={i}
+              className={`badge-shield-side ${tier}`}
+              style={{
+                width: `${e.len}px`,
+                height: `${SHIELD_DEPTH}px`,
+                left: `${e.cx}px`,
+                top: `${e.cy}px`,
+                transform: `translate(-50%,-50%) rotateZ(${e.angle}deg) rotateX(90deg)`,
+                filter: `brightness(${e.brightness})`,
+              }}
+            />
+          ))}
+
+          <div
+            className={`badge-shield badge-shield-front ${tier}`}
+            style={{ clipPath: SHIELD_CLIP }}
+          >
+            <Icon className="badge-icon" size={34} />
+          </div>
+
+          <div
+            className={`badge-shield badge-shield-back ${tier}`}
+            style={{ clipPath: SHIELD_CLIP }}
+          >
+            <Icon className="badge-icon" size={34} />
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // Racha consecutiva (en días) terminando hoy, a partir de un conjunto
 // de fechas "YYYY-MM-DD". Se usa tanto para la racha propia como para
 // la de un amigo.
@@ -732,6 +781,20 @@ export default function App() {
   })
 
   const [focusRemainingMs, setFocusRemainingMs] = useState(0)
+
+  const [achievementState, setAchievementState] = useState<{
+    celebrated: string[]
+    viewed: string[]
+  }>({ celebrated: [], viewed: [] })
+
+  const [celebrationQueue, setCelebrationQueue] = useState<
+    string[]
+  >([])
+
+  const [activeCelebration, setActiveCelebration] = useState<{
+    id: string
+    closing: boolean
+  } | null>(null)
 
   const [authLoading, setAuthLoading] = useState(false)
 
@@ -1668,6 +1731,124 @@ const isDone = (id: string) =>
     weeklyRate,
     friendsCount: acceptedFriends.length,
   }
+
+  const unlockedAchievementIds = ACHIEVEMENTS.filter(
+    a => a.metric(achievementStats) >= a.target
+  ).map(a => a.id)
+
+  const loadAchievementState = async () => {
+    if (!supabase || !authUser) return
+
+    const { data } = await supabase
+      .from('achievement_state')
+      .select('celebrated, viewed')
+      .eq('user_id', authUser.id)
+      .maybeSingle()
+
+    setAchievementState({
+      celebrated: data?.celebrated ?? [],
+      viewed: data?.viewed ?? [],
+    })
+  }
+
+  useEffect(() => {
+    if (authUser) loadAchievementState()
+  }, [authUser])
+
+  // Insignias que se acaban de desbloquear y todavía no mostraron su
+  // animación: se encolan para celebrarlas una por una.
+  useEffect(() => {
+    const toCelebrate = unlockedAchievementIds.filter(
+      id =>
+        !achievementState.celebrated.includes(id) &&
+        !celebrationQueue.includes(id) &&
+        activeCelebration?.id !== id
+    )
+
+    if (toCelebrate.length > 0) {
+      setCelebrationQueue(q => [...q, ...toCelebrate])
+    }
+  }, [unlockedAchievementIds, achievementState.celebrated])
+
+  useEffect(() => {
+    if (activeCelebration || celebrationQueue.length === 0) return
+
+    const [next, ...rest] = celebrationQueue
+    setCelebrationQueue(rest)
+    setActiveCelebration({ id: next, closing: false })
+
+    setAchievementState(s => {
+      const celebrated = Array.from(
+        new Set([...s.celebrated, next])
+      )
+
+      if (supabase && authUser) {
+        supabase.from('achievement_state').upsert({
+          user_id: authUser.id,
+          celebrated,
+          viewed: s.viewed,
+        })
+      }
+
+      return { ...s, celebrated }
+    })
+  }, [celebrationQueue, activeCelebration])
+
+  useEffect(() => {
+    if (!activeCelebration || activeCelebration.closing) return
+
+    const t = setTimeout(() => {
+      setActiveCelebration(c =>
+        c ? { ...c, closing: true } : null
+      )
+    }, 2600)
+
+    return () => clearTimeout(t)
+  }, [activeCelebration])
+
+  useEffect(() => {
+    if (!activeCelebration?.closing) return
+
+    const t = setTimeout(() => setActiveCelebration(null), 500)
+    return () => clearTimeout(t)
+  }, [activeCelebration])
+
+  // Al entrar a Progreso se marcan como vistas todas las insignias ya
+  // celebradas, así se apaga el aviso en la pestaña.
+  useEffect(() => {
+    if (view !== 'stats' || !authUser) return
+    if (
+      achievementState.celebrated.every(id =>
+        achievementState.viewed.includes(id)
+      )
+    )
+      return
+
+    setAchievementState(s => {
+      const viewed = Array.from(
+        new Set([...s.viewed, ...s.celebrated])
+      )
+
+      if (supabase) {
+        supabase.from('achievement_state').upsert({
+          user_id: authUser.id,
+          celebrated: s.celebrated,
+          viewed,
+        })
+      }
+
+      return { ...s, viewed }
+    })
+  }, [view, achievementState.celebrated])
+
+  const unseenAchievementsCount =
+    achievementState.celebrated.filter(
+      id => !achievementState.viewed.includes(id)
+    ).length
+
+  const activeCelebrationBadge = activeCelebration
+    ? ACHIEVEMENTS.find(a => a.id === activeCelebration.id) ?? null
+    : null
 
   const badgeDetail = badgeOverlay
     ? ACHIEVEMENTS.find(a => a.id === badgeOverlay.id) ?? null
@@ -3170,8 +3351,15 @@ const isDone = (id: string) =>
   }
 
   useEffect(() => {
-    if (view === 'friends') loadFriendships()
-  }, [view, authUser])
+    // Se carga apenas hay sesión (no solo al entrar a "Amigos"), porque
+    // las insignias y el ranking necesitan friendsCount/friendStats
+    // desde el arranque, no recién cuando el usuario visita esa pestaña.
+    if (authUser) loadFriendships()
+  }, [authUser])
+
+  useEffect(() => {
+    if (view === 'friends' && authUser) loadFriendships()
+  }, [view])
 
   /*
    * ============================================================
@@ -4574,7 +4762,15 @@ const isDone = (id: string) =>
                 setView(key)
               }
             >
-              <Icon size={20} />
+              <span className="nav-icon">
+                <Icon size={20} />
+                {key === 'stats' &&
+                  unseenAchievementsCount > 0 && (
+                    <span className="notif-dot">
+                      {unseenAchievementsCount}
+                    </span>
+                  )}
+              </span>
               <span>{text}</span>
             </button>
           )
@@ -6182,46 +6378,10 @@ const isDone = (id: string) =>
               <X size={18} />
             </button>
 
-            <div className="badge unlocked badge-detail-shield">
-              <div className="badge-shield-3d">
-                <div className="badge-shield-spin">
-                  {SHIELD_EDGES.map((e, i) => (
-                    <div
-                      key={i}
-                      className={`badge-shield-side ${badgeDetail.tier}`}
-                      style={{
-                        width: `${e.len}px`,
-                        height: `${SHIELD_DEPTH}px`,
-                        left: `${e.cx}px`,
-                        top: `${e.cy}px`,
-                        transform: `translate(-50%,-50%) rotateZ(${e.angle}deg) rotateX(90deg)`,
-                        filter: `brightness(${e.brightness})`,
-                      }}
-                    />
-                  ))}
-
-                  <div
-                    className={`badge-shield badge-shield-front ${badgeDetail.tier}`}
-                    style={{ clipPath: SHIELD_CLIP }}
-                  >
-                    <badgeDetail.icon
-                      className="badge-icon"
-                      size={34}
-                    />
-                  </div>
-
-                  <div
-                    className={`badge-shield badge-shield-back ${badgeDetail.tier}`}
-                    style={{ clipPath: SHIELD_CLIP }}
-                  >
-                    <badgeDetail.icon
-                      className="badge-icon"
-                      size={34}
-                    />
-                  </div>
-                </div>
-              </div>
-            </div>
+            <Badge3DShield
+              tier={badgeDetail.tier}
+              Icon={badgeDetail.icon}
+            />
 
             <h2>{badgeDetail.title}</h2>
 
@@ -6268,6 +6428,27 @@ const isDone = (id: string) =>
                 </>
               )
             })()}
+          </div>
+        </div>
+      )}
+
+      {activeCelebrationBadge && (
+        <div
+          className={`achievement-overlay ${
+            activeCelebration?.closing ? 'closing' : ''
+          }`}
+        >
+          <div className="achievement-content">
+            <p className="achievement-kicker">
+              ¡Nueva insignia!
+            </p>
+
+            <Badge3DShield
+              tier={activeCelebrationBadge.tier}
+              Icon={activeCelebrationBadge.icon}
+            />
+
+            <h2>{activeCelebrationBadge.title}</h2>
           </div>
         </div>
       )}

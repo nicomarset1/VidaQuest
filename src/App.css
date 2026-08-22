@@ -68,6 +68,7 @@ button,input,textarea,select{font:inherit}
 .insight p{font-size:10px;margin:0}
 .bottom-nav{position:fixed;bottom:0;left:0;right:0;margin:auto;max-width:640px;height:calc(75px + env(safe-area-inset-bottom));background:var(--card);display:flex;justify-content:space-around;padding:8px 12px calc(8px + env(safe-area-inset-bottom));border-top:1px solid var(--line);z-index:4}
 .bottom-nav button{border:0;background:transparent;color:var(--muted);display:grid;place-items:center;gap:3px;font-size:9px}
+.nav-icon{position:relative;display:flex}
 .bottom-nav button.active{color:var(--accent-text)}
 .subpage{animation:slide .25s}
 .page-head{height:70px;display:flex;align-items:center;justify-content:space-between}
@@ -280,6 +281,13 @@ button,input,textarea,select{font:inherit}
 .custom-colors{display:flex;gap:12px;margin-top:14px}
 .custom-colors label{flex:1;display:flex;flex-direction:column;gap:6px;font-size:10px;color:var(--muted);font-weight:700;text-transform:uppercase;letter-spacing:.5px}
 .custom-colors input[type=color]{border:1px solid var(--line);border-radius:10px;width:100%;height:44px;padding:3px;background:var(--card)}
+.achievement-overlay{position:fixed;inset:0;z-index:58;display:flex;align-items:center;justify-content:center;background:rgba(6,10,6,.82);backdrop-filter:blur(5px);-webkit-backdrop-filter:blur(5px);animation:overlay-fade .25s ease both}
+.achievement-overlay.closing{animation:overlay-fade-out .5s ease both}
+.achievement-content{display:flex;flex-direction:column;align-items:center;text-align:center}
+.achievement-overlay.closing .achievement-content{animation:achievement-suck .5s cubic-bezier(.55,0,.85,.35) both}
+.achievement-kicker{font:11px 'DM Mono',monospace;text-transform:uppercase;letter-spacing:1.5px;color:var(--accent);margin:0 0 4px;animation:levelup-slide-in .4s ease .1s both}
+.achievement-content h2{color:#fff;margin-top:6px;animation:levelup-slide-in .4s ease .2s both}
+@keyframes achievement-suck{0%{transform:translate(0,0) scale(1);opacity:1}100%{transform:translate(28vw,42vh) scale(.04);opacity:0}}
 .levelup-overlay{position:fixed;inset:0;z-index:60;display:flex;align-items:center;justify-content:center;background:rgba(6,10,6,.86);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);overflow:hidden;animation:levelup-fade .25s ease both}
 .levelup-burst{position:absolute;width:130vh;height:130vh;border-radius:50%;background:conic-gradient(from 0deg,var(--accent),transparent 22%,var(--accent) 50%,transparent 72%,var(--accent));opacity:.16;animation:levelup-spin 7s linear infinite}
 .levelup-particles{position:absolute;inset:0;z-index:1;pointer-events:none}
