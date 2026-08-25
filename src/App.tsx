@@ -120,6 +120,18 @@ const ago = (n: number) => {
   return localDateString(d)
 }
 
+// Lunes de la semana calendario a la que pertenece esa fecha, usado
+// como clave para agrupar completions por semana. A diferencia de
+// countWeek (ventana móvil de 7 días, para mostrar "cómo vas"), esto
+// define semanas fijas que no se solapan, para poder contar el bono
+// de +100 XP una sola vez por semana real y no una vez por día.
+const weekKeyOf = (dateStr: string) => {
+  const d = new Date(`${dateStr}T00:00:00`)
+  const day = (d.getDay() + 6) % 7
+  d.setDate(d.getDate() - day)
+  return localDateString(d)
+}
+
 const greeting = () => {
   const h = new Date().getHours()
 
@@ -1339,14 +1351,44 @@ const isDone = (id: string) =>
         c.date >= weekStart
     ).length
 
-  const totalXP = store.completions.reduce(
-    (sum, c) =>
-      sum +
-      (store.tasks.find(
+  const totalXP = useMemo(() => {
+    let sum = 0
+
+    // XP base: una vez por cada tarea marcada.
+    for (const c of store.completions) {
+      const t = store.tasks.find(
         t => t.id === c.taskId
-      )?.xp || 0),
-    0
-  )
+      )
+      sum += t?.xp || 0
+    }
+
+    // Bono de +100 XP: una vez por cada semana calendario en la que
+    // una tarea llegó a su objetivo semanal (no una vez por día, ni
+    // una vez por cada vez que se recalcula).
+    const perTaskWeek = new Map<string, Map<string, number>>()
+
+    for (const c of store.completions) {
+      const wk = weekKeyOf(c.date)
+
+      if (!perTaskWeek.has(c.taskId)) {
+        perTaskWeek.set(c.taskId, new Map())
+      }
+
+      const weeks = perTaskWeek.get(c.taskId)!
+      weeks.set(wk, (weeks.get(wk) ?? 0) + 1)
+    }
+
+    for (const [taskId, weeks] of perTaskWeek) {
+      const t = store.tasks.find(t => t.id === taskId)
+      if (!t) continue
+
+      for (const count of weeks.values()) {
+        if (count >= t.weeklyTarget) sum += 100
+      }
+    }
+
+    return sum
+  }, [store.completions, store.tasks])
 
   const progress = store.tasks.length
     ? Math.round(
