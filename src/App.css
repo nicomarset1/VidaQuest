@@ -22,7 +22,6 @@ button,input,textarea,select{font:inherit}
 .intro h1 b{color:var(--accent-text)}
 .tiny-action,.section-title button{margin-top:13px;border:0;background:transparent;padding:0;color:var(--accent-text);font-size:11px;font-weight:700;display:flex;gap:5px;align-items:center}
 .intro-actions{display:flex;gap:18px;flex-wrap:wrap}
-.week-tier{font-size:10px;color:var(--muted);margin-top:2px;display:block}
 .remind-toggle{display:flex;align-items:flex-start;gap:8px;font-size:11px;color:var(--muted);margin:14px 0 0}
 .remind-toggle input[type="checkbox"]{margin-top:2px;flex:none;width:18px;height:18px;padding:0}
 .remind-toggle span{flex:1;min-width:0}
@@ -49,7 +48,8 @@ button,input,textarea,select{font:inherit}
 .section-title button{margin:0}
 .missions{display:grid;gap:8px;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
 .mission{display:flex;align-items:center;border:1px solid var(--line);background:var(--card);border-radius:14px;color:var(--ink);position:relative;transition:transform .18s ease}
-.mission.complete{background:var(--accent-soft)}
+.mission.complete{background:var(--accent-soft);color:var(--grad-1)}
+.mission.complete small{color:var(--grad-1);opacity:.7}
 .mission.dragging{box-shadow:0 8px 20px rgba(0,0,0,.18);border-color:var(--accent-text)}
 .drag-handle{border:0;background:transparent;color:var(--muted);padding:13px 0 13px 13px;display:flex;align-items:center;touch-action:none;cursor:grab;flex:none;-webkit-tap-highlight-color:transparent}
 .mission.dragging .drag-handle{cursor:grabbing;color:var(--accent-text)}
@@ -131,7 +131,8 @@ button,input,textarea,select{font:inherit}
 .area-line{height:6px;background:var(--line);border-radius:6px;overflow:hidden}
 .area-line i{display:block;height:100%;background:var(--accent);border-radius:6px}
 .weekly{border:1px solid var(--line);background:var(--card);border-radius:13px;padding:13px;margin-bottom:8px;position:relative}
-.weekly.achieved{border-color:var(--accent);background:var(--accent-soft)}
+.weekly.achieved{border-color:var(--accent);background:var(--accent-soft);color:var(--grad-1)}
+.weekly.achieved p{color:var(--grad-1);opacity:.7}
 .weekly b{font-size:12px}
 .weekly p{font-size:10px;color:var(--muted);margin:4px 0 10px}
 .weekly strong{position:absolute;right:13px;top:13px;font-size:10px;color:var(--accent-text)}

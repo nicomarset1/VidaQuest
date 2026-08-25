@@ -461,13 +461,6 @@ const streakFromDates = (dates: string[] | Set<string>) => {
   return n
 }
 
-const weekTierLabel = (pct: number) => {
-  if (pct >= 90) return '🔥 Semana excelente'
-  if (pct >= 70) return '💪 Semana sólida'
-  if (pct >= 40) return '🙂 Semana pareja'
-  return '🌱 Semana floja, la próxima remontás'
-}
-
 type StreakShieldState = {
   available: number
   lastAwardStreak: number
@@ -3591,12 +3584,6 @@ const isDone = (id: string) =>
                   {streakShields.available > 0 &&
                     ` · 🛡️×${streakShields.available}`}
                 </span>
-
-                {weeklyRate > 0 && (
-                  <span className="week-tier">
-                    {weekTierLabel(weeklyRate)}
-                  </span>
-                )}
               </div>
 
               <button

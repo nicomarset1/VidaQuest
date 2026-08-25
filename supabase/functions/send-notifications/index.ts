@@ -238,13 +238,6 @@ const STREAK_RISK_CHECKPOINTS = [
   { minutesLeft: 5, kind: 'streak-risk-5' },
 ] as const
 
-function weekTierLabel(pct: number) {
-  if (pct >= 90) return '🔥 Semana excelente'
-  if (pct >= 70) return '💪 Semana sólida'
-  if (pct >= 40) return '🙂 Semana pareja'
-  return '🌱 Semana floja, la próxima remontás'
-}
-
 function streakMessage(minutesLeft: number, streakLen: number) {
   const days = `${streakLen} día${streakLen === 1 ? '' : 's'}`
 
@@ -533,7 +526,7 @@ Deno.serve(async req => {
         for (const s of userSubs) {
           await sendTo(s, {
             title: 'VidaQuest',
-            body: `${weekTierLabel(pct)} · ${weekCompletions} tareas completadas (${pct}% de tus objetivos) y ${streakLen} día${
+            body: `📊 Tu semana: ${weekCompletions} tareas completadas (${pct}% de tus objetivos) y ${streakLen} día${
               streakLen === 1 ? '' : 's'
             } de racha.`,
             tag: 'weekly-recap',
