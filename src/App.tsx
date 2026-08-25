@@ -1030,7 +1030,11 @@ export default function App() {
 
   let dbTasks: Task[] = (tasksResult.data || []).map(
     (t: any) => ({
-      id: t.id,
+      // t.id viene de una columna bigint (número); completions.task_id
+      // es text. Sin este String(), toda comparación t.id === taskId
+      // fallaba en silencio (XP, bono semanal, calendario en 0/vacío)
+      // aunque la tarea sí estuviera marcada.
+      id: String(t.id),
       title: t.title,
       area: t.area,
       xp: t.xp,
@@ -1074,7 +1078,7 @@ export default function App() {
 
     if (!seeded.error && seeded.data) {
       dbTasks = seeded.data.map((t: any) => ({
-        id: t.id,
+        id: String(t.id),
         title: t.title,
         area: t.area,
         xp: t.xp,
@@ -2154,7 +2158,7 @@ const isDone = (id: string) =>
     }
 
     const newTask: Task = {
-      id: data.id,
+      id: String(data.id),
       title: data.title,
       area: data.area,
       xp: data.xp,
