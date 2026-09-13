@@ -763,6 +763,13 @@ export default function App() {
     email: string
   } | null>(null)
 
+  // authUser arranca en null tanto si no hay sesión como si todavía no
+  // se confirmó si la hay (getSession tarda, es de red). Sin esta
+  // bandera, el estado de insignias trataba ese "todavía no sé" como
+  // "no hay sesión" y dejaba celebrated en [] antes de tiempo — ver
+  // el efecto de loadAchievementState más abajo.
+  const [authChecked, setAuthChecked] = useState(false)
+
   const [streakShields, setStreakShields] =
     useState<StreakShieldState>({
       available: 0,
@@ -956,6 +963,7 @@ export default function App() {
   const loadSupabaseData = async () => {
   if (!supabase) {
     console.log('Supabase no está configurado')
+    setAuthChecked(true)
     return
   }
 
@@ -968,6 +976,7 @@ export default function App() {
   setAuthUser(
     user ? { id: user.id, email: user.email ?? '' } : null
   )
+  setAuthChecked(true)
 
   if (!user) {
     console.log('No hay usuario autenticado')
@@ -1828,9 +1837,17 @@ const isDone = (id: string) =>
   }
 
   useEffect(() => {
+    // No decidir nada hasta que authChecked confirme si hay sesión o
+    // no. Si se disparara con authUser todavía en null "por las
+    // dudas", loadAchievementState asumiría celebrated: [] antes de
+    // tiempo y el store (que sí carga al toque desde localStorage)
+    // ya mostraría insignias desbloqueadas: se animarían como nuevas
+    // en cada apertura aunque hiciera rato que las tenías.
+    if (!authChecked) return
+
     setAchievementStateLoaded(false)
     loadAchievementState()
-  }, [authUser])
+  }, [authUser, authChecked])
 
   // Insignias que se acaban de desbloquear y todavía no mostraron su
   // animación: se encolan para celebrarlas una por una. Nunca antes de
