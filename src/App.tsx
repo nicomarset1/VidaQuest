@@ -820,7 +820,7 @@ export default function App() {
   const [showPassword, setShowPassword] = useState(false)
 
   const [authView, setAuthView] = useState<
-    'signin' | 'signup' | 'verify'
+    'signin' | 'signup' | 'verify' | 'forgot' | 'reset'
   >('signin')
 
   const [verifyCode, setVerifyCode] = useState('')
@@ -2958,6 +2958,122 @@ const isDone = (id: string) =>
     }
 
     toastMsg('Código reenviado')
+  }
+
+  const forgotPassword = async () => {
+    if (!supabase) return
+
+    if (!auth.email.trim()) {
+      setAuth(a => ({
+        ...a,
+        message: 'Ingresá tu correo.',
+      }))
+      return
+    }
+
+    setAuthLoading(true)
+    setAuth(a => ({ ...a, message: '' }))
+
+    const { error } = await supabase.auth.resetPasswordForEmail(
+      auth.email.trim()
+    )
+
+    setAuthLoading(false)
+
+    if (error) {
+      setAuth(a => ({ ...a, message: error.message }))
+      toastMsg('No se pudo enviar el código', 'error')
+      return
+    }
+
+    setVerifyCode('')
+    setAuth(a => ({ ...a, password: '' }))
+    setAuthView('reset')
+    toastMsg('Te mandamos un código a tu correo')
+  }
+
+  const resendRecoveryCode = async () => {
+    if (!supabase) return
+
+    const { error } = await supabase.auth.resetPasswordForEmail(
+      auth.email.trim()
+    )
+
+    if (error) {
+      toastMsg('No se pudo reenviar el código', 'error')
+      return
+    }
+
+    toastMsg('Código reenviado')
+  }
+
+  const resetPassword = async () => {
+    if (!supabase) return
+
+    if (verifyCode.trim().length < 6) {
+      setAuth(a => ({
+        ...a,
+        message: 'Ingresá el código de 6 dígitos.',
+      }))
+      return
+    }
+
+    if (auth.password.length < 6) {
+      setAuth(a => ({
+        ...a,
+        message:
+          'La contraseña debe tener al menos 6 caracteres.',
+      }))
+      return
+    }
+
+    setAuthLoading(true)
+    setAuth(a => ({ ...a, message: '' }))
+
+    const { data, error } = await supabase.auth.verifyOtp({
+      email: auth.email.trim(),
+      token: verifyCode.trim(),
+      type: 'recovery',
+    })
+
+    if (error) {
+      setAuthLoading(false)
+      setAuth(a => ({
+        ...a,
+        message: 'Código incorrecto o vencido.',
+      }))
+      toastMsg('No se pudo verificar el código', 'error')
+      return
+    }
+
+    const { error: updateError } =
+      await supabase.auth.updateUser({
+        password: auth.password,
+      })
+
+    setAuthLoading(false)
+
+    if (updateError) {
+      setAuth(a => ({ ...a, message: updateError.message }))
+      toastMsg('No se pudo cambiar la contraseña', 'error')
+      return
+    }
+
+    setAuthUser(
+      data.user
+        ? { id: data.user.id, email: data.user.email ?? '' }
+        : null
+    )
+
+    setAuth({ email: '', password: '', message: '' })
+    setVerifyCode('')
+    setAuthView('signin')
+
+    await loadSupabaseData()
+
+    setSheet(null)
+
+    toastMsg('¡Contraseña actualizada!')
   }
 
   const signOut = async () => {
@@ -5697,6 +5813,205 @@ const isDone = (id: string) =>
                     ‹ Volver
                   </button>
                 </>
+              ) : authView === 'forgot' ? (
+                <>
+                  <span className="sheet-icon">
+                    <KeyRound />
+                  </span>
+
+                  <h2>Recuperar contraseña</h2>
+
+                  <p>
+                    Te mandamos un código de 6
+                    dígitos a tu correo para que
+                    puedas elegir una contraseña
+                    nueva.
+                  </p>
+
+                  <div className="field">
+                    <Mail size={16} />
+
+                    <input
+                      autoFocus
+                      type="email"
+                      placeholder="tu@email.com"
+                      value={auth.email}
+                      onChange={e =>
+                        setAuth({
+                          ...auth,
+                          email: e.target.value,
+                        })
+                      }
+                      onKeyDown={e =>
+                        e.key === 'Enter' &&
+                        forgotPassword()
+                      }
+                    />
+                  </div>
+
+                  <button
+                    className="primary"
+                    onClick={forgotPassword}
+                    disabled={authLoading}
+                  >
+                    {authLoading ? (
+                      <LoaderCircle
+                        size={16}
+                        className="spin"
+                      />
+                    ) : (
+                      <Mail size={16} />
+                    )}
+                    {authLoading
+                      ? 'Enviando...'
+                      : 'Enviar código'}
+                  </button>
+
+                  {auth.message && (
+                    <p className="alert-error">
+                      <CircleAlert size={14} />
+                      {auth.message}
+                    </p>
+                  )}
+
+                  <button
+                    className="link-btn"
+                    onClick={() => {
+                      setAuth(a => ({
+                        ...a,
+                        message: '',
+                      }))
+                      setAuthView('signin')
+                    }}
+                  >
+                    ‹ Volver
+                  </button>
+                </>
+              ) : authView === 'reset' ? (
+                <>
+                  <span className="sheet-icon">
+                    <KeyRound />
+                  </span>
+
+                  <h2>Elegí tu nueva contraseña</h2>
+
+                  <p>
+                    Ingresá el código de 6
+                    dígitos que te mandamos a{' '}
+                    <b>{auth.email}</b> junto con
+                    tu contraseña nueva.
+                  </p>
+
+                  <div className="field">
+                    <KeyRound size={16} />
+
+                    <input
+                      autoFocus
+                      inputMode="numeric"
+                      maxLength={6}
+                      placeholder="000000"
+                      value={verifyCode}
+                      onChange={e =>
+                        setVerifyCode(
+                          e.target.value.replace(
+                            /\D/g,
+                            ''
+                          )
+                        )
+                      }
+                    />
+                  </div>
+
+                  <div className="field">
+                    <Lock size={16} />
+
+                    <input
+                      type={
+                        showPassword
+                          ? 'text'
+                          : 'password'
+                      }
+                      placeholder="Contraseña nueva (mínimo 6 caracteres)"
+                      value={auth.password}
+                      onChange={e =>
+                        setAuth({
+                          ...auth,
+                          password: e.target.value,
+                        })
+                      }
+                      onKeyDown={e =>
+                        e.key === 'Enter' &&
+                        resetPassword()
+                      }
+                    />
+
+                    <button
+                      type="button"
+                      className="field-action"
+                      onClick={() =>
+                        setShowPassword(s => !s)
+                      }
+                      aria-label={
+                        showPassword
+                          ? 'Ocultar contraseña'
+                          : 'Mostrar contraseña'
+                      }
+                    >
+                      {showPassword ? (
+                        <EyeOff size={16} />
+                      ) : (
+                        <Eye size={16} />
+                      )}
+                    </button>
+                  </div>
+
+                  <button
+                    className="primary"
+                    onClick={resetPassword}
+                    disabled={authLoading}
+                  >
+                    {authLoading ? (
+                      <LoaderCircle
+                        size={16}
+                        className="spin"
+                      />
+                    ) : (
+                      <Check size={16} />
+                    )}
+                    {authLoading
+                      ? 'Guardando...'
+                      : 'Restablecer contraseña'}
+                  </button>
+
+                  {auth.message && (
+                    <p className="alert-error">
+                      <CircleAlert size={14} />
+                      {auth.message}
+                    </p>
+                  )}
+
+                  <button
+                    className="link-btn"
+                    onClick={resendRecoveryCode}
+                  >
+                    Reenviar código
+                  </button>
+
+                  <button
+                    className="link-btn"
+                    onClick={() => {
+                      setAuth({
+                        email: '',
+                        password: '',
+                        message: '',
+                      })
+                      setVerifyCode('')
+                      setAuthView('signin')
+                    }}
+                  >
+                    ‹ Volver
+                  </button>
+                </>
               ) : authView === 'signup' ? (
                 <>
                   <span className="sheet-icon">
@@ -5927,6 +6242,20 @@ const isDone = (id: string) =>
                       {auth.message}
                     </p>
                   )}
+
+                  <button
+                    className="link-btn"
+                    onClick={() => {
+                      setAuth(a => ({
+                        ...a,
+                        password: '',
+                        message: '',
+                      }))
+                      setAuthView('forgot')
+                    }}
+                  >
+                    ¿Olvidaste tu contraseña?
+                  </button>
 
                   <button
                     className="link-btn"
