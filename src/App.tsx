@@ -17,12 +17,10 @@ import {
   CircleCheck,
   CirclePlus,
   CircleUserRound,
-  ClipboardList,
   Eye,
   EyeOff,
   Flame,
   GripVertical,
-  Home,
   KeyRound,
   Lock,
   LoaderCircle,
@@ -47,6 +45,11 @@ import {
   type LucideIcon,
 } from 'lucide-react'
 import { supabase } from './lib/supabase'
+import {
+  groupUpcoming,
+  nextEvent,
+  relativeWhen,
+} from './lib/agenda'
 import './App.css'
 
 type Task = {
@@ -696,13 +699,11 @@ export default function App() {
   const [store, setStore] = useState<Store>(load)
 
   const [view, setView] = useState<
-    | 'home'
-    | 'tasks'
-    | 'calendar'
-    | 'stats'
+    | 'agenda'
+    | 'habits'
     | 'notes'
     | 'friends'
-  >('home')
+  >('agenda')
 
   const [calendarMonth, setCalendarMonth] = useState(() => {
     const d = new Date()
@@ -1678,15 +1679,57 @@ const isDone = (id: string) =>
     return map
   }, [store.reminders])
 
-  const completionsByDate = useMemo(() => {
-    const map = new Map<string, number>()
+  // Reloj de la agenda: refresca "en 45 min" y el próximo evento.
+  const [now, setNow] = useState(() => new Date())
 
-    for (const c of store.completions) {
-      map.set(c.date, (map.get(c.date) || 0) + 1)
-    }
+  useEffect(() => {
+    const id = setInterval(() => setNow(new Date()), 30000)
+    return () => clearInterval(id)
+  }, [])
 
-    return map
-  }, [store.completions])
+  const nextUp = useMemo(
+    () => nextEvent(store.reminders, now),
+    [store.reminders, now]
+  )
+
+  const agendaGroups = useMemo(
+    () => groupUpcoming(store.reminders, selectedDay, 7),
+    [store.reminders, selectedDay]
+  )
+
+  const agendaListRef = useRef<HTMLDivElement>(null)
+
+  // Tocar un día del mes lleva la lista a ese día; como el mes está
+  // debajo de la lista, se sube para que se vea el cambio.
+  const selectDay = (date: string) => {
+    setSelectedDay(date)
+    agendaListRef.current?.scrollIntoView({
+      behavior: 'smooth',
+      block: 'start',
+    })
+  }
+
+  const openNewReminder = (date: string) => {
+    setReminder({
+      id: null,
+      title: '',
+      time: '09:00',
+      date: date < iso() ? iso() : date,
+    })
+    setSheet('reminder')
+  }
+
+  const openNewTask = () => {
+    setTask({
+      id: null,
+      title: '',
+      area: 'Personal',
+      time: '',
+      target: 4,
+      remind: false,
+    })
+    setSheet('task')
+  }
 
   const monthGrid = useMemo(
     () =>
@@ -1696,14 +1739,6 @@ const isDone = (id: string) =>
       ),
     [calendarMonth]
   )
-
-  const selectedDayReminders =
-    remindersByDate.get(selectedDay) || []
-
-  const selectedDayTasks = store.completions
-    .filter(c => c.date === selectedDay)
-    .map(c => store.tasks.find(t => t.id === c.taskId))
-    .filter((t): t is Task => Boolean(t))
 
   const dayOverlayReminders = dayOverlay
     ? remindersByDate.get(dayOverlay.date) || []
@@ -1906,11 +1941,11 @@ const isDone = (id: string) =>
     return () => clearTimeout(t)
   }, [activeCelebration])
 
-  // Al entrar a Progreso se marcan como vistas todas las insignias ya
-  // celebradas, así se apaga el aviso en la pestaña.
+  // Al entrar a Hábitos (donde están las insignias) se marcan como
+  // vistas todas las ya celebradas, así se apaga el aviso en la pestaña.
   useEffect(() => {
     if (
-      view !== 'stats' ||
+      view !== 'habits' ||
       !authUser ||
       !achievementStateLoaded
     )
@@ -3576,20 +3611,10 @@ const isDone = (id: string) =>
    */
 
   const nav = [
-    ['home', Home, 'Inicio'],
-    ['tasks', ClipboardList, 'Tareas'],
-    ['calendar', CalendarDays, 'Calendario'],
-    ['stats', Trophy, 'Progreso'],
+    ['agenda', CalendarDays, 'Agenda'],
+    ['habits', Trophy, 'Hábitos'],
     ['notes', NotebookPen, 'Notas'],
   ] as const
-
-  const goBack = () => {
-    const order: (typeof view)[] = nav.map(
-      n => n[0]
-    )
-    const idx = order.indexOf(view)
-    setView(order[Math.max(0, idx - 1)])
-  }
 
   return (
     <div className="app">
@@ -3650,7 +3675,7 @@ const isDone = (id: string) =>
       )}
 
       <main>
-        {view === 'home' && (
+        {view === 'agenda' && (
           <>
             <section className="intro">
               <p>
@@ -3665,35 +3690,301 @@ const isDone = (id: string) =>
               </p>
 
               <h1>{greeting()}</h1>
+            </section>
 
-              <div className="intro-actions">
-                <button
-                  onClick={() => {
-                    setReminder({
-                      id: null,
-                      title: '',
-                      time: '09:00',
-                      date: iso(),
-                    })
-                    setSheet('reminder')
-                  }}
-                  className="tiny-action"
+            {nextUp ? (
+              <button
+                className="next-event"
+                onClick={() =>
+                  startEditReminder(nextUp)
+                }
+              >
+                <span className="next-event-icon">
+                  <BellRing size={19} />
+                </span>
+
+                <span className="next-event-body">
+                  <small>PRÓXIMO</small>
+                  <b>{nextUp.title}</b>
+                  <em>
+                    {relativeWhen(
+                      nextUp.date,
+                      nextUp.time,
+                      now
+                    )}
+                  </em>
+                </span>
+
+                <ChevronRight size={18} />
+              </button>
+            ) : (
+              <button
+                className="next-event idle"
+                onClick={() =>
+                  openNewReminder(selectedDay)
+                }
+              >
+                <span className="next-event-icon">
+                  <CalendarDays size={19} />
+                </span>
+
+                <span className="next-event-body">
+                  <small>PRÓXIMO</small>
+                  <b>No tenés nada agendado</b>
+                  <em>Tocá para agendar algo</em>
+                </span>
+
+                <Plus size={18} />
+              </button>
+            )}
+
+            {authUser && pushStatus === 'off' && (
+              <button
+                className="notif-cta"
+                onClick={enablePush}
+              >
+                <BellRing size={17} />
+
+                <span>
+                  <b>
+                    Activá los avisos del calendario
+                  </b>
+                  <small>
+                    Te avisamos antes de cada
+                    evento, aunque la app esté
+                    cerrada.
+                  </small>
+                </span>
+              </button>
+            )}
+
+            <div
+              className="agenda-list"
+              ref={agendaListRef}
+            >
+              <Title
+                label="AGENDA"
+                title={
+                  selectedDay === iso()
+                    ? 'Tus próximos días'
+                    : `Desde el ${fmtReminderDate(
+                        selectedDay
+                      )}`
+                }
+              />
+
+              {agendaGroups.map(g => (
+                <section
+                  className="agenda-day"
+                  key={g.date}
                 >
-                  <Bell size={14} />
-                  Crear recordatorio
+                  <p
+                    className={
+                      g.date === iso()
+                        ? 'today'
+                        : ''
+                    }
+                  >
+                    {fmtDayLabel(g.date)}
+                  </p>
+
+                  {g.items.length ? (
+                    <div className="cal-list">
+                      {g.items.map(r => (
+                        <div
+                          className={`cal-item ${
+                            r.enabled
+                              ? ''
+                              : 'off'
+                          }`}
+                          key={r.id}
+                        >
+                          <button
+                            className="cal-item-main"
+                            onClick={() =>
+                              startEditReminder(r)
+                            }
+                          >
+                            <b>{r.time}</b>
+                            <span>{r.title}</span>
+                          </button>
+
+                          <button
+                            className="cal-item-delete"
+                            aria-label={`Eliminar ${r.title}`}
+                            onClick={() =>
+                              requestDeleteReminder(r)
+                            }
+                          >
+                            <Trash2 size={13} />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <span className="agenda-free">
+                      Sin eventos
+                    </span>
+                  )}
+                </section>
+              ))}
+            </div>
+
+            <section className="agenda-month">
+              <div className="cal-nav">
+                <button
+                  aria-label="Mes anterior"
+                  onClick={() =>
+                    setCalendarMonth(m => {
+                      const d = new Date(
+                        m.year,
+                        m.month - 1,
+                        1
+                      )
+                      return {
+                        year: d.getFullYear(),
+                        month: d.getMonth(),
+                      }
+                    })
+                  }
+                >
+                  <ChevronLeft size={18} />
                 </button>
 
+                <div className="cal-nav-center">
+                  <h2>
+                    {monthLabel(
+                      calendarMonth.year,
+                      calendarMonth.month
+                    )}
+                  </h2>
+
+                  {(selectedDay !== iso() ||
+                    calendarMonth.year !==
+                      new Date().getFullYear() ||
+                    calendarMonth.month !==
+                      new Date().getMonth()) && (
+                    <button
+                      className="cal-today-btn"
+                      onClick={() => {
+                        const d = new Date()
+                        setCalendarMonth({
+                          year: d.getFullYear(),
+                          month: d.getMonth(),
+                        })
+                        selectDay(iso())
+                      }}
+                    >
+                      Hoy
+                    </button>
+                  )}
+                </div>
+
                 <button
+                  aria-label="Mes siguiente"
                   onClick={() =>
-                    setSheet('focus')
+                    setCalendarMonth(m => {
+                      const d = new Date(
+                        m.year,
+                        m.month + 1,
+                        1
+                      )
+                      return {
+                        year: d.getFullYear(),
+                        month: d.getMonth(),
+                      }
+                    })
                   }
-                  className="tiny-action"
                 >
-                  <Timer size={14} />
-                  Enfoque
+                  <ChevronRight size={18} />
                 </button>
               </div>
+
+              <div className="cal-weekdays">
+                {WEEKDAY_LABELS.map(l => (
+                  <span
+                    className="cal-weekday"
+                    key={l}
+                  >
+                    {l}
+                  </span>
+                ))}
+              </div>
+
+              <div className="cal-grid">
+                {monthGrid.map(cell => {
+                  const hasReminder =
+                    remindersByDate.has(cell.date)
+
+                  const isToday =
+                    cell.date === iso()
+
+                  const isSelected =
+                    cell.date === selectedDay
+
+                  return (
+                    <button
+                      key={cell.date}
+                      aria-label={fmtDayLabel(
+                        cell.date
+                      )}
+                      className={`cal-day ${
+                        cell.inMonth
+                          ? ''
+                          : 'outside'
+                      } ${
+                        isToday ? 'today' : ''
+                      } ${
+                        isSelected
+                          ? 'selected'
+                          : ''
+                      }`}
+                      onClick={() =>
+                        selectDay(cell.date)
+                      }
+                    >
+                      <span>{cell.day}</span>
+
+                      <i className="dots">
+                        {hasReminder && (
+                          <b className="dot" />
+                        )}
+                      </i>
+                    </button>
+                  )
+                })}
+              </div>
             </section>
+
+            <button
+              className="fab"
+              aria-label="Nuevo evento"
+              onClick={() =>
+                openNewReminder(selectedDay)
+              }
+            >
+              <Plus size={24} />
+            </button>
+          </>
+        )}
+
+        {view === 'habits' && (
+          <Page
+            title="Hábitos"
+            back={() => setView('agenda')}
+            action={openNewTask}
+          >
+            <div className="intro-actions habits-actions">
+              <button
+                onClick={() =>
+                  setSheet('focus')
+                }
+                className="tiny-action"
+              >
+                <Timer size={14} />
+                Enfoque
+              </button>
+            </div>
 
             <section className="level-card">
               <div className="level-orb">
@@ -3779,50 +4070,10 @@ const isDone = (id: string) =>
             </section>
 
             <Title
-              label="TAREAS DE HOY"
+              label="TAREAS"
               title="Pequeñas victorias"
-              action={() =>
-                setView('tasks')
-              }
             />
 
-            <TaskList
-              tasks={store.tasks.slice(0, 5)}
-              done={isDone}
-              onToggle={toggle}
-            />
-
-            <section className="insight">
-              <Sparkles size={17} />
-
-              <p>
-                <b>
-                  Tu señal del día
-                </b>{' '}
-                {progress >= 75
-                  ? 'Estás a una tarea de cerrar un gran día.'
-                  : 'La consistencia de hoy construye tu próxima versión.'}
-              </p>
-            </section>
-          </>
-        )}
-
-        {view === 'tasks' && (
-          <Page
-            title="Mis tareas"
-            back={goBack}
-            action={() => {
-              setTask({
-                id: null,
-                title: '',
-                area: 'Personal',
-                time: '',
-                target: 4,
-                remind: false,
-              })
-              setSheet('task')
-            }}
-          >
             <p className="filter">
               Tocá una tarea para marcarla. Usá el
               lápiz para editarla, y el ícono de la
@@ -3838,227 +4089,14 @@ const isDone = (id: string) =>
               weekly={countWeek}
               onReorder={reorderTasks}
             />
-          </Page>
-        )}
 
-        {view === 'calendar' && (
-          <Page
-            title="Calendario"
-            back={goBack}
-          >
-            <div className="cal-nav">
-              <button
-                aria-label="Mes anterior"
-                onClick={() =>
-                  setCalendarMonth(m => {
-                    const d = new Date(
-                      m.year,
-                      m.month - 1,
-                      1
-                    )
-                    return {
-                      year: d.getFullYear(),
-                      month: d.getMonth(),
-                    }
-                  })
-                }
-              >
-                <ChevronLeft size={18} />
-              </button>
-
-              <div className="cal-nav-center">
-                <h2>
-                  {monthLabel(
-                    calendarMonth.year,
-                    calendarMonth.month
-                  )}
-                </h2>
-
-                {(calendarMonth.year !==
-                  new Date().getFullYear() ||
-                  calendarMonth.month !==
-                    new Date().getMonth()) && (
-                  <button
-                    className="cal-today-btn"
-                    onClick={() => {
-                      const d = new Date()
-                      setCalendarMonth({
-                        year: d.getFullYear(),
-                        month: d.getMonth(),
-                      })
-                      setSelectedDay(iso())
-                    }}
-                  >
-                    Hoy
-                  </button>
-                )}
-              </div>
-
-              <button
-                aria-label="Mes siguiente"
-                onClick={() =>
-                  setCalendarMonth(m => {
-                    const d = new Date(
-                      m.year,
-                      m.month + 1,
-                      1
-                    )
-                    return {
-                      year: d.getFullYear(),
-                      month: d.getMonth(),
-                    }
-                  })
-                }
-              >
-                <ChevronRight size={18} />
-              </button>
+            <div className="habits-progress">
+              <Title
+                label="PROGRESO"
+                title="Tu progreso"
+              />
             </div>
 
-            <div className="cal-weekdays">
-              {WEEKDAY_LABELS.map(l => (
-                <span
-                  className="cal-weekday"
-                  key={l}
-                >
-                  {l}
-                </span>
-              ))}
-            </div>
-
-            <div className="cal-grid">
-              {monthGrid.map(cell => {
-                const hasReminder =
-                  remindersByDate.has(cell.date)
-
-                const doneCount =
-                  completionsByDate.get(
-                    cell.date
-                  ) || 0
-
-                const isToday =
-                  cell.date === iso()
-
-                const isSelected =
-                  cell.date === selectedDay
-
-                return (
-                  <button
-                    key={cell.date}
-                    aria-label={fmtDayLabel(
-                      cell.date
-                    )}
-                    className={`cal-day ${
-                      cell.inMonth
-                        ? ''
-                        : 'outside'
-                    } ${
-                      isToday ? 'today' : ''
-                    } ${
-                      isSelected
-                        ? 'selected'
-                        : ''
-                    }`}
-                    onClick={() =>
-                      setSelectedDay(cell.date)
-                    }
-                  >
-                    <span>{cell.day}</span>
-
-                    <i className="dots">
-                      {doneCount > 0 && (
-                        <b className="dot" />
-                      )}
-                      {hasReminder && (
-                        <b className="dot reminder" />
-                      )}
-                    </i>
-                  </button>
-                )
-              })}
-            </div>
-
-            <section className="cal-day-detail">
-              <div className="cal-day-detail-head">
-                <p>
-                  {fmtDayLabel(selectedDay)}
-                </p>
-
-                <button
-                  onClick={() => {
-                    setReminder({
-                      id: null,
-                      title: '',
-                      time: '09:00',
-                      date: selectedDay,
-                    })
-                    setSheet('reminder')
-                  }}
-                >
-                  <Plus size={14} />
-                  Agendar
-                </button>
-              </div>
-
-              {selectedDayReminders.length > 0 && (
-                <div className="cal-list">
-                  {selectedDayReminders.map(r => (
-                    <div
-                      className="cal-item"
-                      key={r.id}
-                    >
-                      <button
-                        className="cal-item-main"
-                        onClick={() =>
-                          startEditReminder(r)
-                        }
-                      >
-                        <Bell size={14} />
-                        <span>{r.title}</span>
-                        <b>{r.time}</b>
-                      </button>
-
-                      <button
-                        className="cal-item-delete"
-                        aria-label={`Eliminar ${r.title}`}
-                        onClick={() =>
-                          requestDeleteReminder(r)
-                        }
-                      >
-                        <Trash2 size={13} />
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              )}
-
-              {selectedDayTasks.length > 0 && (
-                <div className="cal-list">
-                  {selectedDayTasks.map((t, i) => (
-                    <div
-                      className="cal-item done"
-                      key={`${t.id}-${i}`}
-                    >
-                      <Check size={14} />
-                      <span>{t.title}</span>
-                      <em>+{t.xp} XP</em>
-                    </div>
-                  ))}
-                </div>
-              )}
-
-              {!selectedDayReminders.length &&
-                !selectedDayTasks.length && (
-                  <Empty text="Nada agendado ni completado este día." />
-                )}
-            </section>
-          </Page>
-        )}
-
-        {view === 'stats' && (
-          <Page
-            title="Tu progreso"
-            back={goBack}
-          >
             <section className="stat-grid">
               <Stat
                 label="XP acumulado"
@@ -4367,7 +4405,7 @@ const isDone = (id: string) =>
         {view === 'notes' && (
           <Page
             title="Bitácora"
-            back={goBack}
+            back={() => setView('agenda')}
           >
             <section className="note-composer">
               <p>
@@ -4514,7 +4552,7 @@ const isDone = (id: string) =>
         {view === 'friends' && (
           <Page
             title="Amigos"
-            back={() => setView('home')}
+            back={() => setView('agenda')}
           >
             <section className="friend-search">
               <p>
@@ -4966,7 +5004,7 @@ const isDone = (id: string) =>
             >
               <span className="nav-icon">
                 <Icon size={20} />
-                {key === 'stats' &&
+                {key === 'habits' &&
                   unseenAchievementsCount > 0 && (
                     <span className="notif-dot">
                       {unseenAchievementsCount}
