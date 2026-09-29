@@ -96,10 +96,13 @@ Deno.serve(async req => {
     return json({ ok: false, reason: 'cooldown' })
   }
 
+  // El aliento es un aviso de hábitos: solo a dispositivos con ese
+  // interruptor activado.
   const { data: subs } = await admin
     .from('push_subscriptions')
     .select('*')
     .eq('user_id', toUserId)
+    .eq('notify_habits', true)
 
   const fromLabel =
     nicknameForSender || fromUser.email || 'Un amigo'

@@ -274,6 +274,10 @@ button,input,textarea,select{font:inherit}
 .time-range input{width:100%;margin-top:4px}
 .until-row{display:grid;margin-top:4px}
 .until-row small{font-size:9px;color:var(--muted);margin-top:8px}
+.push-block{margin-top:6px}
+.push-row{cursor:pointer}
+.push-row input{width:40px;height:22px;margin:0;accent-color:var(--accent-text);flex:none}
+.push-row:has(input:disabled){opacity:.55}
 .field-label{font-size:10px!important;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);margin:16px 0 0}
 .field-hint{display:block;font-size:10px;color:var(--muted);margin-top:6px}
 .chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}

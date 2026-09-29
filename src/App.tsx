@@ -90,6 +90,8 @@ type Reminder = {
 
 // Lo que se edita en la hoja de evento (un evento nuevo todavía no
 // tiene id).
+type PushChannels = { calendar: boolean; habits: boolean }
+
 type ReminderDraft = Omit<Reminder, 'id' | 'enabled'> & {
   id: string | null
 }
@@ -982,6 +984,13 @@ export default function App() {
   const [pushStatus, setPushStatus] = useState<
     'unsupported' | 'needs-install' | 'off' | 'on' | 'loading'
   >('off')
+
+  // Qué avisos recibe este dispositivo cuando la suscripción está
+  // activa: los del calendario y los de hábitos (racha, tareas, etc.).
+  const [pushChannels, setPushChannels] = useState<PushChannels>({
+    calendar: true,
+    habits: true,
+  })
 
   const [friendships, setFriendships] = useState<
     Friendship[]
@@ -3152,7 +3161,9 @@ const isDone = (id: string) =>
     )
   }
 
-  const enablePush = async () => {
+  const enablePush = async (
+    channels: PushChannels = { calendar: true, habits: true }
+  ) => {
     if (!supabase) {
       toastMsg('Conectá Supabase primero', 'error')
       return
@@ -3209,6 +3220,8 @@ const isDone = (id: string) =>
             Intl.DateTimeFormat().resolvedOptions()
               .timeZone,
           last_seen_at: new Date().toISOString(),
+          notify_calendar: channels.calendar,
+          notify_habits: channels.habits,
         },
         { onConflict: 'endpoint' }
       )
@@ -3226,8 +3239,61 @@ const isDone = (id: string) =>
       return
     }
 
+    setPushChannels(channels)
     setPushStatus('on')
     toastMsg('Notificaciones activadas')
+  }
+
+  const setPushChannel = async (
+    channel: keyof PushChannels,
+    on: boolean
+  ) => {
+    const base: PushChannels =
+      pushStatus === 'on'
+        ? pushChannels
+        : { calendar: false, habits: false }
+
+    const next = { ...base, [channel]: on }
+
+    if (!next.calendar && !next.habits) {
+      await disablePush()
+      return
+    }
+
+    if (pushStatus !== 'on') {
+      await enablePush(next)
+      return
+    }
+
+    if (!supabase) return
+
+    const reg = await navigator.serviceWorker.ready
+    const sub = await reg.pushManager.getSubscription()
+
+    if (!sub) {
+      await enablePush(next)
+      return
+    }
+
+    const { error } = await supabase
+      .from('push_subscriptions')
+      .update({
+        notify_calendar: next.calendar,
+        notify_habits: next.habits,
+      })
+      .eq('endpoint', sub.endpoint)
+
+    if (error) {
+      console.error('Error guardando avisos:', error)
+      toastMsg('No se pudo guardar el cambio', 'error')
+      return
+    }
+
+    setPushChannels(next)
+    toastMsg(
+      on ? 'Avisos activados' : 'Avisos desactivados',
+      on ? 'success' : 'info'
+    )
   }
 
   const disablePush = async () => {
@@ -3258,7 +3324,7 @@ const isDone = (id: string) =>
         await reg.pushManager.getSubscription()
 
       if (sub) {
-        await supabase!
+        const { data } = await supabase!
           .from('push_subscriptions')
           .update({
             last_seen_at: new Date().toISOString(),
@@ -3267,6 +3333,14 @@ const isDone = (id: string) =>
                 .timeZone,
           })
           .eq('endpoint', sub.endpoint)
+          .select('notify_calendar, notify_habits')
+
+        if (data && data[0]) {
+          setPushChannels({
+            calendar: data[0].notify_calendar ?? true,
+            habits: data[0].notify_habits ?? true,
+          })
+        }
       }
     })
   }, [authUser, pushStatus])
@@ -3751,10 +3825,15 @@ const isDone = (id: string) =>
               </button>
             )}
 
-            {authUser && pushStatus === 'off' && (
+            {authUser &&
+              (pushStatus === 'off' ||
+                (pushStatus === 'on' &&
+                  !pushChannels.calendar)) && (
               <button
                 className="notif-cta"
-                onClick={enablePush}
+                onClick={() =>
+                  setPushChannel('calendar', true)
+                }
               >
                 <BellRing size={17} />
 
@@ -5877,50 +5956,80 @@ const isDone = (id: string) =>
                 </button>
 
                 {authUser && (
-                  <button
-                    className="menu-row"
-                    disabled={
-                      pushStatus === 'unsupported' ||
-                      pushStatus === 'needs-install' ||
-                      pushStatus === 'loading'
-                    }
-                    onClick={
-                      pushStatus === 'on'
-                        ? disablePush
-                        : enablePush
-                    }
-                  >
-                    {pushStatus === 'loading' ? (
-                      <LoaderCircle
-                        size={20}
-                        className="spin"
-                      />
-                    ) : (
-                      <BellRing />
+                  <div className="push-block">
+                    <p className="field-label">
+                      Notificaciones
+                    </p>
+
+                    {(pushStatus === 'unsupported' ||
+                      pushStatus === 'needs-install') && (
+                      <small className="field-hint">
+                        {pushStatus === 'unsupported'
+                          ? 'No disponibles en este navegador.'
+                          : 'Agregá la app a tu pantalla de inicio para activarlas.'}
+                      </small>
                     )}
 
-                    <span>
-                      <b>
-                        Notificaciones push
-                      </b>
+                    {(
+                      [
+                        {
+                          key: 'calendar',
+                          icon: CalendarDays,
+                          title: 'Calendario',
+                          hint: 'Avisos antes de cada evento',
+                        },
+                        {
+                          key: 'habits',
+                          icon: Flame,
+                          title: 'Hábitos y racha',
+                          hint: 'Racha, tareas, resumen semanal y enfoque',
+                        },
+                      ] as const
+                    ).map(row => {
+                      const on =
+                        pushStatus === 'on' &&
+                        pushChannels[row.key]
 
-                      <small>
-                        {pushStatus ===
-                          'unsupported' &&
-                          'No disponible en este navegador'}
-                        {pushStatus ===
-                          'needs-install' &&
-                          'Agregá la app a tu pantalla de inicio primero'}
-                        {pushStatus === 'off' &&
-                          'Racha, recordatorios y más'}
-                        {pushStatus === 'on' &&
-                          'Activadas · tocá para desactivar'}
-                        {pushStatus ===
-                          'loading' &&
-                          'Activando...'}
-                      </small>
-                    </span>
-                  </button>
+                      return (
+                        <label
+                          className="menu-row push-row"
+                          key={row.key}
+                        >
+                          {pushStatus === 'loading' ? (
+                            <LoaderCircle
+                              size={20}
+                              className="spin"
+                            />
+                          ) : (
+                            <row.icon />
+                          )}
+
+                          <span>
+                            <b>{row.title}</b>
+                            <small>{row.hint}</small>
+                          </span>
+
+                          <input
+                            type="checkbox"
+                            role="switch"
+                            aria-label={`Notificaciones de ${row.title}`}
+                            checked={on}
+                            disabled={
+                              pushStatus === 'unsupported' ||
+                              pushStatus === 'needs-install' ||
+                              pushStatus === 'loading'
+                            }
+                            onChange={e =>
+                              setPushChannel(
+                                row.key,
+                                e.target.checked
+                              )
+                            }
+                          />
+                        </label>
+                      )
+                    })}
+                  </div>
                 )}
 
                 {authUser && (

@@ -26,6 +26,70 @@ type Subscription = {
   auth: string
   last_seen_at: string
   timezone: string | null
+  notify_calendar: boolean | null
+  notify_habits: boolean | null
+}
+
+type EventRow = {
+  date: string
+  recurrence: 'none' | 'daily' | 'weekly' | 'monthly'
+  recurrence_until: string | null
+}
+
+// Eventos de todo el día: los avisos se calculan desde esta hora.
+const ALL_DAY_ALERT_TIME = '09:00'
+
+const dayNumber = (date: string) => {
+  const [y, m, d] = date.split('-').map(Number)
+  return Date.UTC(y, m - 1, d) / 86400000
+}
+
+// Misma regla que occursOn de src/lib/agenda.ts (Deno no puede importar
+// desde src/): si se cambia una, cambiar la otra.
+function occursOn(event: EventRow, date: string) {
+  const start = event.date
+  if (date < start) return false
+
+  const until = event.recurrence_until
+  const recurrence =
+    until && until < start ? 'none' : event.recurrence ?? 'none'
+
+  if (recurrence === 'none') return date === start
+  if (until && date > until) return false
+
+  if (recurrence === 'daily') return true
+  if (recurrence === 'weekly')
+    return (dayNumber(date) - dayNumber(start)) % 7 === 0
+
+  return date.slice(8) === start.slice(8)
+}
+
+function eventMessage(
+  r: { title: string; location?: string; all_day?: boolean; time: string },
+  offset: number
+) {
+  const where = r.location ? ` · ${r.location}` : ''
+
+  if (offset === 0) {
+    return r.all_day
+      ? `📅 Hoy: ${r.title}${where}`
+      : `📅 ${r.title}${where}`
+  }
+
+  if (offset % 1440 === 0) {
+    const days = offset / 1440
+    const at = r.all_day ? '' : ` a las ${r.time.slice(0, 5)}`
+    return days === 1
+      ? `📅 Mañana${at}: ${r.title}${where}`
+      : `📅 En ${days} días: ${r.title}${where}`
+  }
+
+  if (offset % 60 === 0) {
+    const hours = offset / 60
+    return `⏰ En ${hours} hora${hours === 1 ? '' : 's'}: ${r.title}${where}`
+  }
+
+  return `⏰ En ${offset} min: ${r.title}${where}`
 }
 
 // Fecha (YYYY-MM-DD) que corresponde a `now` en el huso `timeZone`.
@@ -284,45 +348,74 @@ Deno.serve(async req => {
     userTimezone.set(userId, freshest.timezone || FALLBACK_TZ)
   }
 
-  // 1) Recordatorios: aviso 1h antes y aviso al llegar la hora.
-  const { data: reminders } = await supabase
+  // Cada dispositivo elige qué avisos recibe: calendario y/o hábitos.
+  // Filas anteriores a los interruptores (null) cuentan como activadas.
+  const subsWith = (flag: 'notify_calendar' | 'notify_habits') => {
+    const map = new Map<string, Subscription[]>()
+    for (const [userId, userSubs] of subsByUser) {
+      const on = userSubs.filter(s => s[flag] !== false)
+      if (on.length) map.set(userId, on)
+    }
+    return map
+  }
+
+  const calendarSubsByUser = subsWith('notify_calendar')
+  const habitsSubsByUser = subsWith('notify_habits')
+
+  // 1) Eventos del calendario: un aviso por cada anticipación elegida
+  // (alert_offsets, en minutos antes) y por cada ocurrencia si el evento
+  // se repite. Solo a dispositivos con el interruptor de calendario.
+  // Se deduplica por ocurrencia y anticipación en notification_log.
+  const { data: events } = await supabase
     .from('reminders')
     .select('*')
     .eq('enabled', true)
-    .or('notified_due.eq.false,notified_1h.eq.false')
 
-  for (const r of reminders ?? []) {
+  for (const r of events ?? []) {
+    const userSubs = calendarSubsByUser.get(r.user_id)
+    if (!userSubs || !userSubs.length) continue
+
     const tz = userTimezone.get(r.user_id) || FALLBACK_TZ
-    const when = zonedTimeToUtc(r.date, r.time, tz)
-    const diffMin = (when.getTime() - now.getTime()) / 60000
-    const userSubs = subsByUser.get(r.user_id) ?? []
+    const offsets: number[] = r.alert_offsets ?? [60, 0]
+    if (!offsets.length) continue
 
-    if (!r.notified_1h && diffMin <= 60 && diffMin > 45) {
-      for (const s of userSubs) {
-        await sendTo(s, {
-          title: 'VidaQuest',
-          body: `En 1 hora: ${r.title}`,
-          tag: `reminder-1h-${r.id}`,
-        })
-      }
-      await supabase
-        .from('reminders')
-        .update({ notified_1h: true })
-        .eq('id', r.id)
+    const event: EventRow = {
+      date: String(r.date).slice(0, 10),
+      recurrence: r.recurrence ?? 'none',
+      recurrence_until: r.recurrence_until ?? null,
     }
 
-    if (!r.notified_due && diffMin <= 0 && diffMin > -15) {
-      for (const s of userSubs) {
-        await sendTo(s, {
-          title: 'VidaQuest',
-          body: r.title,
-          tag: `reminder-due-${r.id}`,
-        })
+    // De ayer a pasado mañana alcanza: la anticipación máxima es 1 día
+    // y la ventana de envío es de 15 minutos (cruza medianoche).
+    for (const dayOffset of [-24, 0, 24, 48]) {
+      const date = zonedDateString(now, tz, dayOffset)
+      if (!occursOn(event, date)) continue
+
+      const time = r.all_day ? ALL_DAY_ALERT_TIME : r.time
+      if (!/^\d{2}:\d{2}/.test(time || '')) continue
+
+      const when = zonedTimeToUtc(date, time.slice(0, 5), tz)
+
+      for (const offset of offsets) {
+        const fireAt = when.getTime() - offset * 60000
+        const late = (now.getTime() - fireAt) / 60000
+
+        if (late < 0 || late >= 15) continue
+
+        const kind = `event-${r.id}-${date}-${offset}`
+        if (await alreadyLogged(r.user_id, kind, date)) continue
+
+        for (const s of userSubs) {
+          await sendTo(s, {
+            title: 'VidaQuest',
+            body: eventMessage(r, offset),
+            tag: `event-${r.id}-${date}`,
+            renotify: true,
+          })
+        }
+
+        await logSent(r.user_id, kind, date)
       }
-      await supabase
-        .from('reminders')
-        .update({ notified_due: true })
-        .eq('id', r.id)
     }
   }
 
@@ -335,7 +428,7 @@ Deno.serve(async req => {
     .eq('remind', true)
 
   for (const t of remindTasks ?? []) {
-    const userSubs = subsByUser.get(t.user_id)
+    const userSubs = habitsSubsByUser.get(t.user_id)
     if (!userSubs || !userSubs.length) continue
     if (!/^\d{2}:\d{2}$/.test(t.time || '')) continue
 
@@ -382,8 +475,9 @@ Deno.serve(async req => {
   }
 
   // Los avisos diarios corren según el reloj de CADA usuario: uno a las
-  // 20:00 y una escalada de varios entre las 22:00 y las 00:00.
-  for (const [userId, userSubs] of subsByUser) {
+  // 20:00 y una escalada de varios entre las 22:00 y las 00:00. Todos
+  // son de hábitos: solo a dispositivos con ese interruptor.
+  for (const [userId, userSubs] of habitsSubsByUser) {
     const tz = userTimezone.get(userId) || FALLBACK_TZ
     const hour = zonedHourOf(now, tz)
     const today = zonedDateString(now, tz)
@@ -391,7 +485,9 @@ Deno.serve(async req => {
     // 2) "Todavía no entraste hoy" — 20:00 local.
     if (hour === 20 && !(await alreadyLogged(userId, 'no-open', today))) {
       const doneToday = await countCompletions(userId, today)
-      const lastSeenToday = userSubs.some(
+      // Se mira en todos los dispositivos, no solo los que reciben
+      // avisos de hábitos: si abrió la app en cualquiera, ya entró.
+      const lastSeenToday = (subsByUser.get(userId) ?? []).some(
         s =>
           s.last_seen_at &&
           zonedDateString(new Date(s.last_seen_at), tz) === today
@@ -547,7 +643,7 @@ Deno.serve(async req => {
     .lte('ends_at', now.toISOString())
 
   for (const f of dueFocusSessions ?? []) {
-    const userSubs = subsByUser.get(f.user_id) ?? []
+    const userSubs = habitsSubsByUser.get(f.user_id) ?? []
 
     for (const s of userSubs) {
       await sendTo(s, {
