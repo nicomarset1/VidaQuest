@@ -4,6 +4,8 @@ import {
   groupUpcoming,
   nextEvent,
   relativeWhen,
+  occursOn,
+  type Recurrence,
   type AgendaItem,
 } from './agenda'
 
@@ -83,5 +85,91 @@ describe('relativeWhen', () => {
     expect(relativeWhen('2026-10-02', '09:00', now)).toBe(
       'vie 2 oct · 09:00'
     )
+  })
+})
+
+const rec = (
+  date: string,
+  recurrence: Recurrence,
+  recurrenceUntil: string | null = null,
+  time = '10:00'
+): AgendaItem => ({
+  id: `${recurrence}-${date}`,
+  title: 'x',
+  date,
+  time,
+  enabled: true,
+  recurrence,
+  recurrenceUntil,
+})
+
+describe('occursOn', () => {
+  it('sin repetición: solo su fecha', () => {
+    const r = rec('2026-09-29', 'none')
+    expect(occursOn(r, '2026-09-29')).toBe(true)
+    expect(occursOn(r, '2026-09-30')).toBe(false)
+  })
+
+  it('diaria desde el inicio y hasta el límite', () => {
+    const r = rec('2026-09-29', 'daily', '2026-10-02')
+    expect(occursOn(r, '2026-09-28')).toBe(false)
+    expect(occursOn(r, '2026-09-29')).toBe(true)
+    expect(occursOn(r, '2026-10-02')).toBe(true)
+    expect(occursOn(r, '2026-10-03')).toBe(false)
+  })
+
+  it('semanal: mismo día de la semana', () => {
+    const r = rec('2026-09-29', 'weekly')
+    expect(occursOn(r, '2026-10-06')).toBe(true)
+    expect(occursOn(r, '2026-10-07')).toBe(false)
+    expect(occursOn(r, '2027-03-30')).toBe(true)
+  })
+
+  it('mensual el 31 salta meses sin 31', () => {
+    const r = rec('2026-08-31', 'monthly')
+    expect(occursOn(r, '2026-09-30')).toBe(false)
+    expect(occursOn(r, '2026-10-01')).toBe(false)
+    expect(occursOn(r, '2026-10-31')).toBe(true)
+  })
+
+  it('límite anterior al inicio: solo la fecha inicial', () => {
+    const r = rec('2026-09-29', 'daily', '2026-09-01')
+    expect(occursOn(r, '2026-09-29')).toBe(true)
+    expect(occursOn(r, '2026-09-30')).toBe(false)
+  })
+
+  it('datos viejos sin recurrence se tratan como none', () => {
+    expect(occursOn(item('a', '2026-09-29', '10:00'), '2026-09-29')).toBe(true)
+    expect(occursOn(item('a', '2026-09-29', '10:00'), '2026-09-30')).toBe(false)
+  })
+})
+
+describe('agenda con repeticiones', () => {
+  it('groupUpcoming repite eventos semanales', () => {
+    const groups = groupUpcoming(
+      [rec('2026-09-22', 'weekly')],
+      '2026-09-29',
+      8
+    )
+    expect(groups.filter(g => g.items.length).map(g => g.date)).toEqual([
+      '2026-09-29',
+      '2026-10-06',
+    ])
+  })
+
+  it('nextEvent devuelve la próxima ocurrencia con su fecha', () => {
+    const now = new Date(2026, 8, 29, 12, 0)
+    const next = nextEvent([rec('2026-09-01', 'daily', null, '09:00')], now)
+    expect(next?.date).toBe('2026-09-30')
+    expect(next?.time).toBe('09:00')
+  })
+
+  it('nextEvent: evento de todo el día de hoy sigue siendo próximo', () => {
+    const now = new Date(2026, 8, 29, 18, 0)
+    const next = nextEvent(
+      [{ ...rec('2026-09-29', 'none', null, ''), allDay: true }],
+      now
+    )
+    expect(next?.date).toBe('2026-09-29')
   })
 })

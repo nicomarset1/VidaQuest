@@ -33,6 +33,7 @@ import {
   Pencil,
   Plus,
   RefreshCw,
+  Repeat,
   Sparkles,
   Sun,
   Target,
@@ -48,7 +49,9 @@ import { supabase } from './lib/supabase'
 import {
   groupUpcoming,
   nextEvent,
+  occursOn,
   relativeWhen,
+  type Recurrence,
 } from './lib/agenda'
 import './App.css'
 
@@ -75,7 +78,86 @@ type Reminder = {
   time: string
   date: string
   enabled: boolean
+  endTime: string | null
+  allDay: boolean
+  description: string
+  location: string
+  color: string | null
+  recurrence: Recurrence
+  recurrenceUntil: string | null
+  alertOffsets: number[]
 }
+
+// Lo que se edita en la hoja de evento (un evento nuevo todavía no
+// tiene id).
+type ReminderDraft = Omit<Reminder, 'id' | 'enabled'> & {
+  id: string | null
+}
+
+const ALERT_OPTIONS = [
+  { minutes: 0, label: 'En el momento' },
+  { minutes: 10, label: '10 min antes' },
+  { minutes: 30, label: '30 min antes' },
+  { minutes: 60, label: '1 h antes' },
+  { minutes: 1440, label: '1 día antes' },
+]
+
+const RECURRENCE_OPTIONS: { value: Recurrence; label: string }[] = [
+  { value: 'none', label: 'No se repite' },
+  { value: 'daily', label: 'Todos los días' },
+  { value: 'weekly', label: 'Cada semana' },
+  { value: 'monthly', label: 'Cada mes' },
+]
+
+const EVENT_COLORS = ['lime', 'cyan', 'violet', 'orange', 'pink']
+
+const emptyReminderDraft = (date: string): ReminderDraft => ({
+  id: null,
+  title: '',
+  time: '09:00',
+  date,
+  endTime: null,
+  allDay: false,
+  description: '',
+  location: '',
+  color: null,
+  recurrence: 'none',
+  recurrenceUntil: null,
+  alertOffsets: [60, 0],
+})
+
+// Acepta filas de Supabase (snake_case) y recordatorios viejos de
+// localStorage, que no tienen los campos de evento.
+const normalizeReminder = (r: any): Reminder => ({
+  id: String(r.id),
+  title: r.title ?? '',
+  time: r.time ?? '09:00',
+  date: String(r.date ?? '').slice(0, 10),
+  enabled: r.enabled ?? true,
+  endTime: r.end_time ?? r.endTime ?? null,
+  allDay: r.all_day ?? r.allDay ?? false,
+  description: r.description ?? '',
+  location: r.location ?? '',
+  color: r.color ?? null,
+  recurrence: r.recurrence ?? 'none',
+  recurrenceUntil: r.recurrence_until ?? r.recurrenceUntil ?? null,
+  alertOffsets: r.alert_offsets ?? r.alertOffsets ?? [60, 0],
+})
+
+const reminderRow = (r: ReminderDraft) => ({
+  title: r.title.trim(),
+  date: r.date,
+  time: r.allDay ? '09:00' : r.time,
+  end_time: r.allDay ? null : r.endTime || null,
+  all_day: r.allDay,
+  description: r.description.trim(),
+  location: r.location.trim(),
+  color: r.color,
+  recurrence: r.recurrence,
+  recurrence_until:
+    r.recurrence === 'none' ? null : r.recurrenceUntil || null,
+  alert_offsets: [...r.alertOffsets].sort((a, b) => b - a),
+})
 
 type Note = {
   id: string
@@ -686,9 +768,13 @@ const starter: Store = {
 
 const load = (): Store => {
   try {
-    return {
+    const saved = {
       ...starter,
       ...JSON.parse(localStorage.getItem('vidaquest-v3') || '{}'),
+    }
+    return {
+      ...saved,
+      reminders: (saved.reminders || []).map(normalizeReminder),
     }
   } catch {
     return starter
@@ -935,17 +1021,9 @@ export default function App() {
     remind: false,
   })
 
-  const [reminder, setReminder] = useState<{
-    id: string | null
-    title: string
-    time: string
-    date: string
-  }>({
-    id: null,
-    title: '',
-    time: '09:00',
-    date: iso(),
-  })
+  const [reminder, setReminder] = useState<ReminderDraft>(() =>
+    emptyReminderDraft(iso())
+  )
 
   const [note, setNote] = useState('')
 
@@ -1122,15 +1200,7 @@ export default function App() {
 
   const dbReminders: Reminder[] = (
     remindersResult.data || []
-  ).map(
-    (r: any) => ({
-      id: r.id,
-      title: r.title,
-      time: r.time,
-      date: r.date,
-      enabled: r.enabled,
-    })
-  )
+  ).map(normalizeReminder)
 
   const dbNotes: Note[] = (
     notesResult.data || []
@@ -1306,13 +1376,24 @@ export default function App() {
    * Recordatorios
    */
   useEffect(() => {
+    // Con eventos que se repiten, lo que se descarta es la ocurrencia
+    // de hoy (id + fecha), no el evento entero. La clave vieja (solo id)
+    // se sigue respetando para no repetir avisos ya vistos.
     const check = () => {
+      const today = iso()
+
       const due = store.reminders.find(
         r =>
           r.enabled &&
-          new Date(`${r.date}T${r.time}`) <= new Date() &&
+          !r.allDay &&
+          occursOn(r, today) &&
+          new Date(`${today}T${r.time}`) <= new Date() &&
           !localStorage.getItem(
-            `vidaquest-dismissed-${r.id}`
+            `vidaquest-dismissed-${r.id}-${today}`
+          ) &&
+          !(
+            r.recurrence === 'none' &&
+            localStorage.getItem(`vidaquest-dismissed-${r.id}`)
           )
       )
 
@@ -1320,7 +1401,7 @@ export default function App() {
         toastMsg(`Recordatorio: ${due.title}`)
 
         localStorage.setItem(
-          `vidaquest-dismissed-${due.id}`,
+          `vidaquest-dismissed-${due.id}-${today}`,
           '1'
         )
 
@@ -1668,16 +1749,8 @@ const isDone = (id: string) =>
     [store.completions]
   )
 
-  const remindersByDate = useMemo(() => {
-    const map = new Map<string, Reminder[]>()
-
-    for (const r of store.reminders) {
-      if (!map.has(r.date)) map.set(r.date, [])
-      map.get(r.date)!.push(r)
-    }
-
-    return map
-  }, [store.reminders])
+  const remindersOn = (date: string) =>
+    store.reminders.filter(r => occursOn(r, date))
 
   // Reloj de la agenda: refresca "en 45 min" y el próximo evento.
   const [now, setNow] = useState(() => new Date())
@@ -1710,12 +1783,9 @@ const isDone = (id: string) =>
   }
 
   const openNewReminder = (date: string) => {
-    setReminder({
-      id: null,
-      title: '',
-      time: '09:00',
-      date: date < iso() ? iso() : date,
-    })
+    setReminder(
+      emptyReminderDraft(date < iso() ? iso() : date)
+    )
     setSheet('reminder')
   }
 
@@ -1741,7 +1811,7 @@ const isDone = (id: string) =>
   )
 
   const dayOverlayReminders = dayOverlay
-    ? remindersByDate.get(dayOverlay.date) || []
+    ? remindersOn(dayOverlay.date)
     : []
 
   const dayOverlayTasks = dayOverlay
@@ -2530,23 +2600,48 @@ const isDone = (id: string) =>
    * ============================================================
    */
 
-  const addReminder = async () => {
-    if (!reminder.title.trim()) return
+  // Devuelve el motivo si el evento no se puede guardar, o null.
+  const reminderProblem = (r: ReminderDraft) => {
+    if (!r.title.trim()) return 'Poné un título'
+    if (!r.date) return 'Elegí una fecha'
+    if (!r.allDay && !r.time) return 'Elegí una hora'
 
-    if (!supabase) {
-      toastMsg('Conectá Supabase primero', 'error')
+    if (
+      !r.allDay &&
+      r.endTime &&
+      r.endTime <= r.time
+    ) {
+      return 'La hora de fin tiene que ser después del inicio'
+    }
+
+    // Un evento único tiene que ser a futuro; uno que se repite puede
+    // haber empezado antes (sigue teniendo ocurrencias por delante).
+    if (r.recurrence === 'none') {
+      const target = r.allDay
+        ? new Date(`${r.date}T23:59`)
+        : new Date(`${r.date}T${r.time}`)
+
+      if (
+        Number.isNaN(target.getTime()) ||
+        target.getTime() <= Date.now()
+      ) {
+        return 'Elegí una fecha y hora futura'
+      }
+    }
+
+    return null
+  }
+
+  const saveReminder = async () => {
+    const problem = reminderProblem(reminder)
+
+    if (problem) {
+      toastMsg(problem, 'error')
       return
     }
 
-    const target = new Date(
-      `${reminder.date}T${reminder.time}`
-    )
-
-    if (
-      Number.isNaN(target.getTime()) ||
-      target.getTime() <= Date.now()
-    ) {
-      toastMsg('Elegí una fecha y hora futura', 'error')
+    if (!supabase) {
+      toastMsg('Conectá Supabase primero', 'error')
       return
     }
 
@@ -2562,155 +2657,62 @@ const isDone = (id: string) =>
     }
 
     if (
-      Notification.permission ===
-      'default'
+      !reminder.id &&
+      'Notification' in window &&
+      Notification.permission === 'default'
     ) {
       await Notification.requestPermission()
     }
 
-    const {
-      data,
-      error,
-    } = await supabase
-      .from('reminders')
-      .insert({
-        user_id: user.id,
-        title: reminder.title.trim(),
-        date: reminder.date,
-        time: reminder.time,
-        enabled: true,
-      })
-      .select()
-      .single()
+    const row = reminderRow(reminder)
 
-    if (error) {
-      console.error(
-        'Error creando recordatorio:',
-        error
-      )
-      toastMsg('No se pudo crear el recordatorio', 'error')
+    const { data, error } = reminder.id
+      ? await supabase
+          .from('reminders')
+          .update({
+            ...row,
+            notified_1h: false,
+            notified_due: false,
+          })
+          .eq('id', reminder.id)
+          .eq('user_id', user.id)
+          .select()
+      : await supabase
+          .from('reminders')
+          .insert({
+            ...row,
+            user_id: user.id,
+            enabled: true,
+          })
+          .select()
+
+    if (error || !data || data.length === 0) {
+      console.error('Error guardando evento:', error)
+      toastMsg('No se pudo guardar el evento', 'error')
       return
     }
 
-    const newReminder: Reminder = {
-      id: data.id,
-      title: data.title,
-      date: data.date,
-      time: data.time,
-      enabled: data.enabled,
-    }
+    const saved = normalizeReminder(data[0])
 
     setStore(s => ({
       ...s,
-      reminders: [
-        ...s.reminders,
-        newReminder,
-      ],
+      reminders: reminder.id
+        ? s.reminders.map(r =>
+            r.id === saved.id ? saved : r
+          )
+        : [...s.reminders, saved],
     }))
 
-    setReminder({
-      id: null,
-      title: '',
-      date: iso(),
-      time: '09:00',
-    })
-
+    setReminder(emptyReminderDraft(iso()))
     setSheet(null)
 
     toastMsg(
-      `Recordatorio guardado para ${fmtReminderDate(
-        newReminder.date
-      )} · ${newReminder.time}`
+      reminder.id
+        ? 'Evento actualizado'
+        : `Agendado para ${fmtReminderDate(saved.date)}${
+            saved.allDay ? '' : ` · ${saved.time}`
+          }`
     )
-  }
-
-  const updateReminder = async () => {
-    if (!reminder.id || !reminder.title.trim()) return
-
-    if (!supabase) {
-      toastMsg('Conectá Supabase primero', 'error')
-      return
-    }
-
-    const target = new Date(
-      `${reminder.date}T${reminder.time}`
-    )
-
-    if (
-      Number.isNaN(target.getTime()) ||
-      target.getTime() <= Date.now()
-    ) {
-      toastMsg('Elegí una fecha y hora futura', 'error')
-      return
-    }
-
-    const {
-      data: userData,
-    } = await supabase.auth.getUser()
-
-    const user = userData.user
-
-    if (!user) {
-      toastMsg('Iniciá sesión primero', 'error')
-      return
-    }
-
-    const { data, error } = await supabase
-      .from('reminders')
-      .update({
-        title: reminder.title.trim(),
-        date: reminder.date,
-        time: reminder.time,
-        notified_1h: false,
-        notified_due: false,
-      })
-      .eq('id', reminder.id)
-      .eq('user_id', user.id)
-      .select()
-
-    if (error) {
-      console.error(
-        'Error actualizando recordatorio:',
-        error
-      )
-      toastMsg('No se pudo guardar el cambio', 'error')
-      return
-    }
-
-    if (!data || data.length === 0) {
-      toastMsg('No se pudo guardar el cambio', 'error')
-      return
-    }
-
-    const editedId = reminder.id
-    const editedTitle = reminder.title.trim()
-    const editedDate = reminder.date
-    const editedTime = reminder.time
-
-    setStore(s => ({
-      ...s,
-      reminders: s.reminders.map(r =>
-        r.id === editedId
-          ? {
-              ...r,
-              title: editedTitle,
-              date: editedDate,
-              time: editedTime,
-            }
-          : r
-      ),
-    }))
-
-    setReminder({
-      id: null,
-      title: '',
-      date: iso(),
-      time: '09:00',
-    })
-
-    setSheet(null)
-
-    toastMsg('Recordatorio actualizado')
   }
 
   const deleteReminder = async (id: string) => {
@@ -2769,22 +2771,22 @@ const isDone = (id: string) =>
 
   const requestDeleteReminder = (r: Reminder) => {
     setConfirmState({
-      title: 'Eliminar recordatorio',
-      message: `Vas a eliminar "${r.title}". Esta acción no se puede deshacer.`,
+      title: 'Eliminar evento',
+      message:
+        r.recurrence === 'none'
+          ? `Vas a eliminar "${r.title}". Esta acción no se puede deshacer.`
+          : `"${r.title}" se repite: se van a eliminar todas sus fechas. Esta acción no se puede deshacer.`,
       action: async () => {
         setConfirmState(null)
         await deleteReminder(r.id)
+        setSheet(s => (s === 'reminder' ? null : s))
       },
     })
   }
 
   const startEditReminder = (r: Reminder) => {
-    setReminder({
-      id: r.id,
-      title: r.title,
-      time: r.time,
-      date: r.date,
-    })
+    const { enabled: _enabled, ...draft } = r
+    setReminder(draft)
     setSheet('reminder')
   }
 
@@ -3695,9 +3697,14 @@ const isDone = (id: string) =>
             {nextUp ? (
               <button
                 className="next-event"
-                onClick={() =>
-                  startEditReminder(nextUp)
-                }
+                onClick={() => {
+                  // nextUp trae la fecha de la ocurrencia; se edita
+                  // la serie original.
+                  const series = store.reminders.find(
+                    r => r.id === nextUp.id
+                  )
+                  if (series) startEditReminder(series)
+                }}
               >
                 <span className="next-event-icon">
                   <BellRing size={19} />
@@ -3707,11 +3714,17 @@ const isDone = (id: string) =>
                   <small>PRÓXIMO</small>
                   <b>{nextUp.title}</b>
                   <em>
-                    {relativeWhen(
-                      nextUp.date,
-                      nextUp.time,
-                      now
-                    )}
+                    {nextUp.allDay
+                      ? nextUp.date === iso()
+                        ? 'Hoy · todo el día'
+                        : `${fmtReminderDate(
+                            nextUp.date
+                          )} · todo el día`
+                      : relativeWhen(
+                          nextUp.date,
+                          nextUp.time,
+                          now
+                        )}
                   </em>
                 </span>
 
@@ -3805,8 +3818,36 @@ const isDone = (id: string) =>
                               startEditReminder(r)
                             }
                           >
-                            <b>{r.time}</b>
-                            <span>{r.title}</span>
+                            <b>
+                              {r.allDay
+                                ? 'Todo el día'
+                                : r.endTime
+                                  ? `${r.time}–${r.endTime}`
+                                  : r.time}
+                            </b>
+
+                            {r.color && (
+                              <i
+                                className={`event-dot ${r.color}`}
+                              />
+                            )}
+
+                            <span>
+                              {r.title}
+                              {r.location && (
+                                <small>
+                                  {r.location}
+                                </small>
+                              )}
+                            </span>
+
+                            {r.recurrence !== 'none' && (
+                              <Repeat
+                                size={12}
+                                className="event-repeat"
+                                aria-label="Se repite"
+                              />
+                            )}
                           </button>
 
                           <button
@@ -3914,7 +3955,7 @@ const isDone = (id: string) =>
               <div className="cal-grid">
                 {monthGrid.map(cell => {
                   const hasReminder =
-                    remindersByDate.has(cell.date)
+                    remindersOn(cell.date).length > 0
 
                   const isToday =
                     cell.date === iso()
@@ -5210,81 +5251,246 @@ const isDone = (id: string) =>
             {sheet === 'reminder' && (
               <>
                 <span className="sheet-icon">
-                  <Bell />
+                  <CalendarDays />
                 </span>
 
                 <h2>
                   {reminder.id
-                    ? 'Editar recordatorio'
-                    : 'Nuevo recordatorio'}
+                    ? 'Editar evento'
+                    : 'Nuevo evento'}
                 </h2>
 
-                <p>
-                  Te vamos a avisar en tu
-                  teléfono cuando llegue la
-                  fecha y hora.
-                </p>
-
                 <input
-                  autoFocus
-                  placeholder="Ej. Tomar agua"
-                  value={
-                    reminder.title
-                  }
+                  autoFocus={!reminder.id}
+                  placeholder="Ej. Turno con el dentista"
+                  value={reminder.title}
                   onChange={e =>
                     setReminder({
                       ...reminder,
-                      title:
-                        e.target.value,
+                      title: e.target.value,
                     })
                   }
                 />
+
+                <label className="switch-row">
+                  <span>Todo el día</span>
+                  <input
+                    type="checkbox"
+                    checked={reminder.allDay}
+                    onChange={e =>
+                      setReminder({
+                        ...reminder,
+                        allDay: e.target.checked,
+                      })
+                    }
+                  />
+                </label>
 
                 <div className="form-row">
                   <input
                     className="half"
                     type="date"
-                    min={iso()}
-                    value={
-                      reminder.date
-                    }
+                    aria-label="Fecha"
+                    value={reminder.date}
                     onChange={e =>
                       setReminder({
                         ...reminder,
-                        date:
-                          e.target.value,
-                      })
-                    }
-                  />
-
-                  <input
-                    className="half"
-                    type="time"
-                    value={
-                      reminder.time
-                    }
-                    onChange={e =>
-                      setReminder({
-                        ...reminder,
-                        time:
-                          e.target.value,
+                        date: e.target.value,
                       })
                     }
                   />
                 </div>
 
+                {!reminder.allDay && (
+                  <div className="form-row time-range">
+                    <label>
+                      <small>Empieza</small>
+                      <input
+                        type="time"
+                        value={reminder.time}
+                        onChange={e =>
+                          setReminder({
+                            ...reminder,
+                            time: e.target.value,
+                          })
+                        }
+                      />
+                    </label>
+
+                    <label>
+                      <small>Termina (opcional)</small>
+                      <input
+                        type="time"
+                        value={reminder.endTime ?? ''}
+                        onChange={e =>
+                          setReminder({
+                            ...reminder,
+                            endTime:
+                              e.target.value || null,
+                          })
+                        }
+                      />
+                    </label>
+                  </div>
+                )}
+
+                <div className="form-row">
+                  <select
+                    aria-label="Repetición"
+                    value={reminder.recurrence}
+                    onChange={e =>
+                      setReminder({
+                        ...reminder,
+                        recurrence: e.target
+                          .value as Recurrence,
+                      })
+                    }
+                  >
+                    {RECURRENCE_OPTIONS.map(o => (
+                      <option
+                        key={o.value}
+                        value={o.value}
+                      >
+                        {o.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {reminder.recurrence !== 'none' && (
+                  <label className="until-row">
+                    <small>
+                      Repetir hasta (vacío = sin fin)
+                    </small>
+                    <input
+                      type="date"
+                      min={reminder.date}
+                      value={
+                        reminder.recurrenceUntil ?? ''
+                      }
+                      onChange={e =>
+                        setReminder({
+                          ...reminder,
+                          recurrenceUntil:
+                            e.target.value || null,
+                        })
+                      }
+                    />
+                  </label>
+                )}
+
+                <p className="field-label">Avisarme</p>
+
+                <div className="chips">
+                  {ALERT_OPTIONS.map(o => {
+                    const on =
+                      reminder.alertOffsets.includes(
+                        o.minutes
+                      )
+
+                    return (
+                      <button
+                        key={o.minutes}
+                        type="button"
+                        className={`chip ${
+                          on ? 'on' : ''
+                        }`}
+                        aria-pressed={on}
+                        onClick={() =>
+                          setReminder({
+                            ...reminder,
+                            alertOffsets: on
+                              ? reminder.alertOffsets.filter(
+                                  m => m !== o.minutes
+                                )
+                              : [
+                                  ...reminder.alertOffsets,
+                                  o.minutes,
+                                ],
+                          })
+                        }
+                      >
+                        {o.label}
+                      </button>
+                    )
+                  })}
+                </div>
+
+                {reminder.allDay && (
+                  <small className="field-hint">
+                    En eventos de todo el día, los
+                    avisos toman como hora las 9:00.
+                  </small>
+                )}
+
+                <p className="field-label">Color</p>
+
+                <div className="color-picks">
+                  <button
+                    type="button"
+                    aria-label="Sin color"
+                    className={`color-pick none ${
+                      reminder.color ? '' : 'on'
+                    }`}
+                    onClick={() =>
+                      setReminder({
+                        ...reminder,
+                        color: null,
+                      })
+                    }
+                  />
+
+                  {EVENT_COLORS.map(c => (
+                    <button
+                      key={c}
+                      type="button"
+                      aria-label={`Color ${c}`}
+                      className={`color-pick ${c} ${
+                        reminder.color === c
+                          ? 'on'
+                          : ''
+                      }`}
+                      onClick={() =>
+                        setReminder({
+                          ...reminder,
+                          color: c,
+                        })
+                      }
+                    />
+                  ))}
+                </div>
+
+                <input
+                  placeholder="Lugar (opcional)"
+                  value={reminder.location}
+                  onChange={e =>
+                    setReminder({
+                      ...reminder,
+                      location: e.target.value,
+                    })
+                  }
+                />
+
+                <textarea
+                  className="sheet-textarea"
+                  placeholder="Notas (opcional)"
+                  value={reminder.description}
+                  onChange={e =>
+                    setReminder({
+                      ...reminder,
+                      description: e.target.value,
+                    })
+                  }
+                />
+
                 <button
                   className="primary"
-                  onClick={
-                    reminder.id
-                      ? updateReminder
-                      : addReminder
-                  }
+                  onClick={saveReminder}
                 >
                   <Calendar size={16} />
                   {reminder.id
                     ? 'Guardar cambios'
-                    : 'Guardar recordatorio'}
+                    : 'Agendar'}
                 </button>
 
                 {reminder.id && (
@@ -5303,7 +5509,9 @@ const isDone = (id: string) =>
                     }}
                   >
                     <Trash2 size={16} />
-                    Eliminar recordatorio
+                    {reminder.recurrence === 'none'
+                      ? 'Eliminar evento'
+                      : 'Eliminar toda la serie'}
                   </button>
                 )}
               </>
@@ -5315,13 +5523,7 @@ const isDone = (id: string) =>
                   store.reminders
                 }
                 add={() => {
-                  setReminder({
-                    id: null,
-                    title: '',
-                    time: '09:00',
-                    date: iso(),
-                  })
-                  setSheet('reminder')
+                  openNewReminder(iso())
                 }}
                 onEdit={startEditReminder}
                 onDelete={requestDeleteReminder}

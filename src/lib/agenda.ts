@@ -1,12 +1,19 @@
 // Helpers puros de la agenda: fechas locales como 'YYYY-MM-DD' y horas
 // 'HH:MM', igual que el resto de la app.
 
+export type Recurrence = 'none' | 'daily' | 'weekly' | 'monthly'
+
+// `date` es la fecha de inicio de la serie. Los campos de repetición son
+// opcionales para aceptar datos guardados antes de que existieran.
 export type AgendaItem = {
   id: string
   title: string
   date: string
   time: string
   enabled: boolean
+  allDay?: boolean
+  recurrence?: Recurrence
+  recurrenceUntil?: string | null
 }
 
 const WEEKDAYS = ['dom', 'lun', 'mar', 'mié', 'jue', 'vie', 'sáb']
@@ -32,8 +39,33 @@ export const addDays = (date: string, n: number) => {
   return toDateString(d)
 }
 
+const dayDiff = (from: string, to: string) =>
+  Math.round(
+    (toDate(to).getTime() - toDate(from).getTime()) / 86400000
+  )
+
+export const occursOn = (item: AgendaItem, date: string) => {
+  const start = item.date
+  if (date < start) return false
+
+  const until = item.recurrenceUntil
+  // Un límite anterior al inicio deja solo la fecha inicial.
+  const recurrence =
+    until && until < start ? 'none' : item.recurrence ?? 'none'
+
+  if (recurrence === 'none') return date === start
+  if (until && date > until) return false
+
+  if (recurrence === 'daily') return true
+  if (recurrence === 'weekly') return dayDiff(start, date) % 7 === 0
+
+  // Mensual: mismo número de día. Los meses que no lo tienen (ej. 31)
+  // se saltean, no se corre al día siguiente.
+  return date.slice(8) === start.slice(8)
+}
+
 const byTime = (a: AgendaItem, b: AgendaItem) =>
-  (a.time || '').localeCompare(b.time || '')
+  (a.allDay ? '' : a.time || '').localeCompare(b.allDay ? '' : b.time || '')
 
 export const groupUpcoming = <T extends AgendaItem>(
   items: T[],
@@ -44,23 +76,36 @@ export const groupUpcoming = <T extends AgendaItem>(
     const date = addDays(from, i)
     return {
       date,
-      items: items.filter(it => it.date === date).sort(byTime),
+      items: items.filter(it => occursOn(it, date)).sort(byTime),
     }
   })
 
+// Próxima ocurrencia habilitada desde `now`, con `date` ya puesta en la
+// fecha de esa ocurrencia (el id sigue siendo el de la serie). Un evento
+// de todo el día cuenta como próximo durante todo ese día.
 export const nextEvent = <T extends AgendaItem>(
   items: T[],
-  now: Date
+  now: Date,
+  horizonDays = 400
 ): T | null => {
-  const upcoming = items
-    .filter(
-      it => it.enabled && toDate(it.date, it.time).getTime() >= now.getTime()
-    )
-    .sort(
-      (a, b) =>
-        toDate(a.date, a.time).getTime() - toDate(b.date, b.time).getTime()
-    )
-  return upcoming[0] ?? null
+  const today = toDateString(now)
+
+  for (let i = 0; i <= horizonDays; i++) {
+    const date = addDays(today, i)
+
+    const candidates = items
+      .filter(it => it.enabled && occursOn(it, date))
+      .filter(
+        it =>
+          it.allDay ||
+          toDate(date, it.time).getTime() >= now.getTime()
+      )
+      .sort(byTime)
+
+    if (candidates.length) return { ...candidates[0], date }
+  }
+
+  return null
 }
 
 export const relativeWhen = (date: string, time: string, now: Date) => {
