@@ -173,3 +173,29 @@ describe('agenda con repeticiones', () => {
     expect(next?.date).toBe('2026-09-29')
   })
 })
+
+describe('repetición anual', () => {
+  it('mismo día y mes todos los años', () => {
+    const r = rec('2026-10-01', 'yearly')
+    expect(occursOn(r, '2026-10-01')).toBe(true)
+    expect(occursOn(r, '2027-10-01')).toBe(true)
+    expect(occursOn(r, '2030-10-01')).toBe(true)
+    expect(occursOn(r, '2026-11-01')).toBe(false)
+    expect(occursOn(r, '2027-10-02')).toBe(false)
+    expect(occursOn(r, '2025-10-01')).toBe(false)
+  })
+
+  it('29 de febrero cae el 28 en años no bisiestos', () => {
+    const r = rec('2028-02-29', 'yearly')
+    expect(occursOn(r, '2029-02-28')).toBe(true)
+    expect(occursOn(r, '2029-03-01')).toBe(false)
+    expect(occursOn(r, '2032-02-29')).toBe(true)
+    expect(occursOn(r, '2032-02-28')).toBe(false)
+  })
+
+  it('respeta el límite', () => {
+    const r = rec('2026-10-01', 'yearly', '2028-12-31')
+    expect(occursOn(r, '2028-10-01')).toBe(true)
+    expect(occursOn(r, '2029-10-01')).toBe(false)
+  })
+})

@@ -109,6 +109,7 @@ const RECURRENCE_OPTIONS: { value: Recurrence; label: string }[] = [
   { value: 'daily', label: 'Todos los días' },
   { value: 'weekly', label: 'Cada semana' },
   { value: 'monthly', label: 'Cada mes' },
+  { value: 'yearly', label: 'Cada año' },
 ]
 
 const EVENT_COLORS = ['lime', 'cyan', 'violet', 'orange', 'pink']

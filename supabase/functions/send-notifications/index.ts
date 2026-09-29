@@ -32,7 +32,7 @@ type Subscription = {
 
 type EventRow = {
   date: string
-  recurrence: 'none' | 'daily' | 'weekly' | 'monthly'
+  recurrence: 'none' | 'daily' | 'weekly' | 'monthly' | 'yearly'
   recurrence_until: string | null
 }
 
@@ -42,6 +42,21 @@ const ALL_DAY_ALERT_TIME = '09:00'
 const dayNumber = (date: string) => {
   const [y, m, d] = date.split('-').map(Number)
   return Date.UTC(y, m - 1, d) / 86400000
+}
+
+// Anual: mismo día y mes. Un 29 de febrero cae el 28 en los años que no
+// son bisiestos, así un cumpleaños no se saltea tres de cada cuatro años.
+const isLeapYear = (y: number) =>
+  (y % 4 === 0 && y % 100 !== 0) || y % 400 === 0
+
+const sameDayOfYear = (start: string, date: string) => {
+  const md = date.slice(5)
+  if (md === start.slice(5)) return true
+  return (
+    start.slice(5) === '02-29' &&
+    md === '02-28' &&
+    !isLeapYear(Number(date.slice(0, 4)))
+  )
 }
 
 // Misma regla que occursOn de src/lib/agenda.ts (Deno no puede importar
@@ -60,6 +75,7 @@ function occursOn(event: EventRow, date: string) {
   if (recurrence === 'daily') return true
   if (recurrence === 'weekly')
     return (dayNumber(date) - dayNumber(start)) % 7 === 0
+  if (recurrence === 'yearly') return sameDayOfYear(start, date)
 
   return date.slice(8) === start.slice(8)
 }

@@ -1,7 +1,12 @@
 // Helpers puros de la agenda: fechas locales como 'YYYY-MM-DD' y horas
 // 'HH:MM', igual que el resto de la app.
 
-export type Recurrence = 'none' | 'daily' | 'weekly' | 'monthly'
+export type Recurrence =
+  | 'none'
+  | 'daily'
+  | 'weekly'
+  | 'monthly'
+  | 'yearly'
 
 // `date` es la fecha de inicio de la serie. Los campos de repetición son
 // opcionales para aceptar datos guardados antes de que existieran.
@@ -44,6 +49,21 @@ const dayDiff = (from: string, to: string) =>
     (toDate(to).getTime() - toDate(from).getTime()) / 86400000
   )
 
+// Anual: mismo día y mes. Un 29 de febrero cae el 28 en los años que no
+// son bisiestos, así un cumpleaños no se saltea tres de cada cuatro años.
+const isLeapYear = (y: number) =>
+  (y % 4 === 0 && y % 100 !== 0) || y % 400 === 0
+
+const sameDayOfYear = (start: string, date: string) => {
+  const md = date.slice(5)
+  if (md === start.slice(5)) return true
+  return (
+    start.slice(5) === '02-29' &&
+    md === '02-28' &&
+    !isLeapYear(Number(date.slice(0, 4)))
+  )
+}
+
 export const occursOn = (item: AgendaItem, date: string) => {
   const start = item.date
   if (date < start) return false
@@ -58,6 +78,8 @@ export const occursOn = (item: AgendaItem, date: string) => {
 
   if (recurrence === 'daily') return true
   if (recurrence === 'weekly') return dayDiff(start, date) % 7 === 0
+
+  if (recurrence === 'yearly') return sameDayOfYear(start, date)
 
   // Mensual: mismo número de día. Los meses que no lo tienen (ej. 31)
   // se saltean, no se corre al día siguiente.
